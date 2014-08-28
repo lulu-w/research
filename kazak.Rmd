@@ -1,0 +1,496 @@
+```{r echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE)
+opts_knit$set(root.dir="C:/Users/lwang336/Desktop/workdir/kazak/results")
+```
+
+---
+title: "Kazak Data Set"
+author: "lulu"
+date: "Monday, July 21, 2014"
+output: html_document
+---
+
+## Libraries and Raw Data
+
+In this analysis, we started with `.bam` files containing RNA-seq reads aligned to hg19. The first metadata file is the `libs` file which contains the name and total mapped reads of all libraries.
+
+```{r cache=TRUE}
+libs <- read.delim("tmap_lib_size.tsv", header=TRUE,sep="\t")
+```
+
+```{r colors}
+library(RColorBrewer)
+c6 <- brewer.pal(6, "Paired")
+c6 <- c6[c(2, 1, 6, 5, 4, 3)]
+
+pal1 <- colorRampPalette(c6[1:2])
+pal2 <- colorRampPalette(c6[3:4])
+pal3 <- colorRampPalette(c6[5:6])
+
+c15 <- c(pal1(7)[c(1:2, 5:7)], pal2(6)[c(1:2, 5:6)], pal3(8)[c(1:3, 6:8)])
+
+#Temp Insertion #
+#c6.container <- c6
+#c6 <- c6[1:4]
+#c15 <- c15[1:9]
+#Temp Insertion #
+```
+
+In this data set, we have **`r nrow(libs)`** libraries that correspond to **six** different conditions:
+
+1. SR
+2. SR with IL-2 treatment
+3. SEN
+4. SEN with IL-2 treatment
+5. REJ
+6. REJ with IL-2 treatment
+
+Each file contains mapped reads were pooled together, compared against RefSeq gene model(`RefSeq.bed` file downloaded from UCSC genome browser) and generated a counts matrix using `bedtools`. 
+
+## Distribution of Raw Counts
+
+The raw counts for each transcript is calculated by couting the number of reads overlapped with the **exons** of both protein-coding and non-coding **RefSeq transcripts**.
+
+```{r readCountsMatrix, cache=TRUE}
+tb <- read.table("counts_matrix.txt",header=FALSE)
+counts <- as.matrix(tb[,2:16])
+rownames(counts) <- tb[,1]
+rm(tb)
+colnames(counts) <- rownames(libs)
+counts <- counts[order(rownames(counts)),]
+head(counts, n=2)
+```
+
+
+```{r CountsDensity}
+library(reshape)
+library(ggplot2)
+
+plotDistribution <- function(data, title = ""){
+    par(mar=c(8.1,6.1,4.1,2.1))
+    par(las=2)
+    boxplot(log2(data.frame(data)), col = c15, names = (colnames(data)), main = paste(title))
+    data.df <- data.frame(id = rownames(data), data, stringsAsFactors = FALSE)
+    mdf <- melt(data.df, id = "id", variable_name = "condition")
+
+    ggplot(mdf, aes(log2(value))) +
+        geom_density(aes(color = condition)) + 
+        title(main = paste(title), xlab = "") + 
+        scale_colour_manual(values = c15) +
+        theme_bw() +
+        theme(panel.grid.major = element_blank())
+}
+
+plotDistribution(counts+1, "Distribution of Read Counts")
+#plotDistribution(counts[, 1:9]+1, "Distribution of Read Counts")
+```
+
+In this analysis, we started with **`r nrow(counts)`** RefSeq transcript annotations.
+
+## ERCC Counts
+
+The ERCC counts for each library were downloaded from the **Ion Proton** server with the help from James. The distribution of ERCC counts is shown below:
+
+```{r readERCC}
+ercc <- read.table("ercc_counts.txt", header = TRUE)
+head(ercc, 2)
+
+plotDistribution(ercc+1, "Distribution of ERCC Counts")
+#plotDistribution(ercc[, 1:9]+1, "Distribution of ERCC Counts")
+```
+
+In general, the distribution of **`r nrow(ercc)`**ERCC counts follows the trend of total read counts.
+
+## Determining Lower Limit of Detection
+
+The true counts of the ERCC sequences were obtaind from the `ERCC_Controls_Analysis.txt` file downloaded from [manufacturer's website][001]
+
+```{r downloadERCC, cache = TRUE}
+con = "http://tools.lifetechnologies.com/downloads/ERCC_Controls_Analysis.txt"
+true.ercc <- read.delim(con, header = TRUE)
+```
+
+The scatterplots below compared the observed ERCC counts versus the theoretical number of molecules from the manufacturer's documentation.
+
+```{r reformatERCC}
+true.ercc <- true.ercc[, c(2, 4)]
+true.ercc <- true.ercc[order(true.ercc$ERCC.ID), ]
+
+head(true.ercc)
+colnames(true.ercc) = c("ercc.id", "mix1.attmoles")
+```
+
+
+```{r obsERCCvsTrue, fig.height = 14, fig.width = 10}
+library(reshape)
+library(lattice)
+
+low.cut <- 3
+lib.cut <- 2
+
+ercc.df <- cbind(ercc.id = rownames(ercc), ercc, stringsAsFactors = FALSE)
+
+erccOvsE <- function(data, title = ""){
+    temp <- merge(data, true.ercc, by.x = colnames(data)[grep("id", colnames(data))], by.y = "ercc.id")
+    
+    mdf <- melt(temp[, c(1, grep("sr|sen|rej", colnames(temp)))], id = colnames(data)[grep("id", colnames(data))], variable_name = "sample")
+    
+    mdf <- cbind(mdf, expected = rep(temp$mix1.attmoles, ncol(ercc)))
+    
+    mdf$sample <- ordered(mdf$sample)
+    
+    xyplot( log2(value + 1) ~ log2(expected+1) | sample, data = mdf, 
+            layout = c(3,5), 
+            as.table = TRUE, 
+            pch = 20, 
+            col = rgb(70, 130, 180, 100, maxColorValue = 255), 
+            par.strip.text = list(cex = 0.7), 
+            xlim = c(0, 15),
+            ylim = c(0, 15),
+            xlab = expression(log[2]*"Expected Counts"), 
+            ylab = expression(log[2]*"Observed Counts"), 
+            main = paste(title), 
+            panel = function(x, y, ...) {
+                panel.xyplot(x, y, ...)
+                panel.abline(h = log2(low.cut+1), lty = 2)
+                panel.lmline(x, y, col.line = rgb(0,0,0,0.2))
+    })
+}
+erccOvsE(ercc.df, "ERCC Dose Response")
+```
+
+The **dashed line** in panels above shows the empirical cutoff for low read count sequences. The ERCC sequences with more than **`r low.cut`** counts in each library demonstrated linear relationship between the expected and observed read counts.
+
+```{r plotPairwiseCorr, fig.height = 9, fig.width = 12}
+plotPairs <- function(data, title = ""){
+    pairs(log2(data), col = rgb(0,0.5,1,0.2), pch = 16, main = paste(title))
+}
+plotPairs(ercc[, 1:5], "RAW ERCC Correlation of SR")
+plotPairs(ercc[, 6:9], "RAW ERCC Correlation of SEN")
+```
+
+
+# Normalization
+
+```{r exonLengths, cache=TRUE}
+exon.lengths <- t(read.delim("exon_lengths.tsv",header=TRUE,sep="\t"))
+```
+
+The exon length of each RefSeq transcripts were calculated using the `RefSeq.gtf` file downloaded from UCSC genome browser. 
+
+```{r getGeneLengths}
+counts.df <- data.frame(id = rownames(counts), counts, stringsAsFactors = FALSE)
+lengths.df <- data.frame(id = rownames(exon.lengths), exon.lengths)
+mdf <- merge(counts.df, lengths.df, by.x = "id", by.y = "id")
+counts.df <- mdf
+head(counts.df, 2)
+```
+
+For ERCC Spike-Ins, the lengths of the ERCC sequences were obtaind from the `ERCC92.gtf` file downloaded from [manufacturer's website][001]
+
+```{r getERCClength}
+tb <- read.table("http://tools.invitrogen.com/downloads/ERCC92.gtf", header = FALSE)
+tb <- tb[, c(1, 5)]
+colnames(tb) <- c("id", "length")
+mdf <- merge(ercc.df, tb, by.x = "ercc.id", by.y = "id" )
+ercc.df <- mdf
+head(ercc.df, 2)
+```
+
+
+```{r RefSeq2HGNC_symbol, cache = TRUE}
+library(biomaRt)
+
+pcg <- grep("NM_", counts.df$id)
+nc <- grep("NR_", counts.df$id)
+
+pcg.id <- counts.df$id[pcg]
+nc.id <- counts.df$id[nc]
+
+getSymbol <- function(ids, id.type, attributes){
+    ensembl = useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+    res <- getBM( attributes = c(paste(id.type), paste(attributes)), filters = id.type, values = ids, mart = ensembl )
+}
+
+res1 <- getSymbol(pcg.id, "refseq_mrna", attributes = "hgnc_symbol")
+res2 <- getSymbol(nc.id, "refseq_ncrna", attributes = "hgnc_symbol")
+```
+
+```{r cleanHGNC_symbol}
+cleanBiomartRes <- function(data, id.type, attribute){
+    # Remove nchar=0 empty results
+    data[, attribute] <- ifelse(nchar(data[, paste(attribute)]) == 0, NA, data[, attribute])
+    # Sort and remove duplicated id
+    data <- data[order(data[, id.type], data[, attribute]), ]
+    data <- data[!duplicated(data[, id.type]), ]
+}
+res1 <- cleanBiomartRes(res1, "refseq_mrna", "hgnc_symbol")
+res2 <- cleanBiomartRes(res2, "refseq_ncrna", "hgnc_symbol")
+```
+
+```{r assembleHGNC_symbol}
+#Assemble results for mRNA
+pcg <- merge(counts.df[pcg, ], res1, by.x = "id", by.y = "refseq_mrna", all.x = TRUE)
+
+fillMissingSymbol <- function(data){
+    data$hgnc_symbol <- ifelse(is.na(data$hgnc_symbol), data$id, data$hgnc_symbol)
+    return(data)
+}
+pcg <- fillMissingSymbol(pcg)
+rm(res1)
+
+#Assemble results for ncRNA
+nc <- merge(counts.df[nc, ], res2, by.x = "id", by.y = "refseq_ncrna", all.x = TRUE)
+nc <- fillMissingSymbol(nc)
+rm(res2)
+#Assemble mRNA and ncRNA
+counts.df <- rbind(pcg, nc)
+rm(pcg)
+rm(nc)
+
+ercc.df <- data.frame(ercc.df, hgnc_symbol = ercc.df$ercc.id, stringsAsFactors = FALSE)
+colnames(ercc.df) <- gsub("ercc.id", "id", colnames(ercc.df))
+colnames(counts.df) <- gsub("Length", "length", colnames(counts.df))
+counts.df <- rbind(ercc.df, counts.df)
+
+groups <- colnames(counts.df)[2:16]
+groups <- gsub("_[0-9]+", "", groups)
+groups <- factor(groups, levels = unique(groups))
+```
+
+```{r}
+library(edgeR)
+dge <- DGEList(counts = counts.df[, 2:16], group = groups, genes = counts.df[, c(1, 17, 18)])
+
+#dge <- DGEList(counts = counts.df[, 2:10], group = factor(groups[1:9]), genes = counts.df[, c(1, 17)])
+```
+
+## Filtering Low Expression Sequences
+
+
+```{r FilterCounts}
+#Filter Low Count Seqeunces
+keep <- apply(dge$counts, 1, min) > 3
+#keep <- rowSums(cpm(dge) > 1) >= 2
+dge <- dge[keep, ]
+
+#plotDistribution(dge$counts, "Distribution of Filtered Counts")
+plotDistribution(dge$counts[, 1:9], "Distribution of Filtered Counts")
+
+counts.df <- data.frame(dge$counts, dge$genes)
+```
+
+After filtering, **`r length(keep)`** transcripts were kept for downstream analysis.
+
+## Expression of Genes
+Since different RefSeq transcripts for the same gene symbol shares most of their reads, therefore, among the **`r nrow(counts.df)`** transcripts, the transcript with highest overall count for each gene symbol were used for that particular gene symbol. 
+
+```{r getGeneExpression}
+o <- order(rowSums(dge$counts))
+dge <- dge[o, ]
+dge <- dge[! duplicated(dge$genes$hgnc_symbol), ]
+
+dge$samples$lib.size <- colSums(dge$counts)
+```
+
+
+## RPKM Normalization
+
+The **RPKM** calculation for each RefSeq transcript was calculated using the method from *Mortazavi et. al*. 
+
+For the *i* th transcript in library *j*, the RPKM is calculated as
+
+$RPKM_{i,j} = \frac{exonReadsCount_{i,j}}{librarySize_{j} \times exonLength_{i} \times 10^{-9}}$
+
+
+All RPKM values for transcripts were stored in the matrix below:
+
+```{r getRPKM}
+rpkms <- rpkm(dge, gene.length = dge$genes$length, normalized.lib.sizes = FALSE)
+rownames(rpkms) <- dge$genes$id
+```
+
+
+```{r RpkmDensity}
+library(reshape)
+library(ggplot2)
+
+plotDistribution(rpkms, "Distribution of RPKM")
+plotDistribution(rpkms[grep("ERCC-", dge$genes$id), ], "RPKM Normalized ERCC Sequences")
+#plotDistribution(rpkms[, 1:9], "Distribution of RPKM")
+#plotDistribution(rpkms[grep("ERCC-", dge$genes$id), 1:9], "RPKM Normalized ERCC Sequences")
+```
+
+## TMM Normalization
+
+
+```{r TMM}
+dge <- calcNormFactors(dge)
+tmm <- cpm(dge, normalized.lib.sizes = TRUE)
+```
+
+```{r TMMDensity}
+library(reshape)
+library(ggplot2)
+
+plotDistribution(tmm, "TMM Normalized Gene Expression")
+plotDistribution(tmm[grep("ERCC-", dge$genes$id), ], "TMM Normalized ERCC Sequences")
+#plotDistribution(tmm[, 1:9], "TMM Normalized Gene Expression")
+#plotDistribution(tmm[grep("ERCC-", dge$genes$id), 1:9], "TMM Normalized ERCC Sequences")
+
+tmm.df <- data.frame(tmm, dge$genes)
+```
+
+```{r erccTMMvsExpected, fig.height = 14, fig.width = 10}
+erccOvsE(tmm.df, "ERCC Expected vs. TMM Normalized")
+```
+
+## DESeq Scaling Factor Normalization
+
+```{r DESeq, message = FALSE}
+library(DESeq)
+temp <- dge$counts
+rownames(temp) <- dge$genes$hgnc_symbol
+cds <- newCountDataSet(temp, conditions = groups)
+
+cds <- estimateSizeFactors(cds)
+sizeFactors(cds)
+deseq <- counts(cds, normalized = TRUE)
+```
+
+```{r DESeqDensity}
+library(reshape)
+library(ggplot2)
+
+plotDistribution(deseq, "DESeq Normalized Counts")
+plotDistribution(deseq[grep("ERCC-", rownames(deseq)), ], "DESeq Normalized ERCC")
+#plotDistribution(deseq[, 1:9], "DESeq Normalized Counts")
+#plotDistribution(deseq[grep("ERCC-", rownames(deseq)), 1:9], "DESeq Normalized ERCC")
+
+deseq.df <- data.frame(deseq, dge$genes)
+```
+
+
+## LOESS Normalization
+
+```{r LOESS, message = FALSE}
+library(affy)
+loess <- normalize.loess(dge$counts, subset = grep("ERCC-", dge$genes$id), maxit = 3, verbose = FALSE)
+```
+
+```{r LOESSDensity}
+library(reshape)
+library(ggplot2)
+
+plotDistribution(loess, "LOESS Normalized Gene Expression")
+plotDistribution(loess[grep("ERCC-", dge$genes$id), ], "LOESS Normalized ERCC Sequences")
+#plotDistribution(loess[, 1:9], "LOESS Normalized Gene Expression")
+#plotDistribution(loess[grep("ERCC-", dge$genes$id), 1:9], "LOESS Normalized ERCC Sequences")
+
+loess.df <- data.frame(loess, dge$genes )
+```
+
+```{r erccLOESSvsExpected, fig.height = 14, fig.width = 10}
+erccOvsE(tmm.df, "ERCC Expected vs. LOESS Normalized")
+```
+
+## RPKM + LOESS Normalization
+
+```{r rpkmLOESS, message = FALSE}
+library(affy)
+rpkms.loess <- normalize.loess(rpkms, subset = grep("ERCC-", rownames(rpkms)), maxit = 3, verbose = FALSE)
+```
+
+```{r rpkmLOESSDensity}
+library(reshape)
+library(ggplot2)
+
+plotDistribution(rpkms.loess, "RPKM + LOESS Normalized Gene Expression")
+plotDistribution(rpkms.loess[grep("ERCC-", rownames(rpkms.loess)), ], "RPKM+ LOESS Normalized ERCC")
+#plotDistribution(rpkms.loess[, 1:9], "RPKM + LOESS Normalized Gene Expression")
+#plotDistribution(rpkms.loess[grep("ERCC-", rownames(rpkms.loess)), 1:9], "RPKM+ LOESS Normalized ERCC")
+
+rpkms.loess.df <- data.frame(rpkms.loess, dge$genes)
+```
+
+# Differential Expression Analysis
+
+## Variance estimation
+
+```{r estVar}
+cds = estimateDispersions(cds)
+plotDispEsts(cds)
+```
+
+## Calling Differential Expression
+
+```{r DEanalysis}
+res = nbinomTest( cds, "sr_treated", "sr_untreated")
+plotMA(res)
+```
+
+
+# Expression Level of Individual Genes/Sequences
+
+```{r IndividualGeneExpression, message = FALSE, fig.width = 3, fig.height = 4}
+library(bear)
+#c6 <- c6.container
+plotGenes <- function(x, data, dataset = "", groups){
+    values <- data[data$hgnc_symbol == x, ]
+    if(nrow(values) == 0){
+        print(paste("No data found for ", x))
+    }
+    else{
+        cols <- grep("sr|sen|rej", colnames(values), perl = TRUE)
+        
+        values <- as.numeric(unlist(values)[cols])
+        values.df <- data.frame(values, groups)
+        sum.var <- summarySE(values.df, measurevar = "values", groupvars = "groups")
+        
+        ggplot(sum.var, aes(x = factor(groups), y = values, fill = groups)) +
+            geom_bar(stat = "identity") +
+            geom_errorbar(aes(ymin = values - se, ymax = values + se),
+                          size = 0.2,
+                          width = 0.2) +
+            scale_fill_manual(values = c6) +
+            labs(title = paste(x, " from ", dataset), x = "", y = "Counts") + 
+        theme_bw() +
+        theme(panel.grid.major = element_blank(), 
+              legend.position = "none",
+              axis.text.x = element_text(angle = 45, hjust = 1))
+    }
+}
+
+old.hk <- c("GAPDH", "RPL13A", "ACTB")
+new.hk <- c("C1orf43", "CHMP2A", "EMC7", "GPI", "PSMB2", "RAB7A", "REEP5", "SNRPD3", "VCP")
+others <- c("SMARCA5","HOXA1","H2AFY")
+ercc.genes <- c("ERCC-00002", "ERCC-00003", "ERCC-00004")
+
+lapply(ercc.genes, plotGenes, counts.df, "Raw", groups)
+lapply(ercc.genes, plotGenes, tmm.df, "TMM", groups)
+lapply(ercc.genes, plotGenes, deseq.df, "DESeq", groups)
+lapply(ercc.genes, plotGenes, loess.df, "LOESS", groups)
+
+
+
+lapply(old.hk, plotGenes, counts.df, "Raw", groups)
+lapply(old.hk, plotGenes, tmm.df, "TMM", groups)
+lapply(old.hk, plotGenes, deseq.df, "DESeq", groups)
+lapply(old.hk, plotGenes, loess.df, "LOESS", groups)
+lapply(old.hk, plotGenes, rpkms.loess.df, "RPKM+LOESS", groups)
+
+lapply(new.hk, plotGenes, counts.df, "Raw", groups)
+lapply(new.hk, plotGenes, tmm.df, "TMM", groups)
+lapply(new.hk, plotGenes, deseq.df, "DESeq", groups)
+lapply(new.hk, plotGenes, loess.df, "LOESS", groups)
+lapply(new.hk, plotGenes, rpkms.loess.df, "RPKM+LOESS", groups)
+
+lapply(others, plotGenes, counts.df, "Raw", groups)
+lapply(others, plotGenes, tmm.df, "TMM", groups)
+lapply(others, plotGenes, deseq.df, "DESeq", groups)
+lapply(others, plotGenes, loess.df, "LOESS", groups)
+lapply(others, plotGenes, rpkms.loess.df, "RPKM+LOESS", groups)
+```
+
+[001]:http://www.lifetechnologies.com/order/catalog/product/4456740
