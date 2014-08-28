@@ -427,11 +427,12 @@ plotMA(res)
 
 # Expression Level of Individual Genes/Sequences
 
-```{r IndividualGeneExpression, message = FALSE, fig.width = 3, fig.height = 4, warnings = FALSE}
+```{r IndividualGeneExpression, message = FALSE, fig.width = 10, fig.height = 4, warnings = FALSE}
 library(bear)
 #c6 <- c6.container
 plotGenes <- function(x, data, dataset = "", groups){
     values <- data[data$hgnc_symbol == x, ]
+    ifelse(nchar(dataset == 0), dataset, paste(" from ", dataset))
     if(nrow(values) == 0){
         print(paste("No data found for ", x))
     }
@@ -441,23 +442,50 @@ plotGenes <- function(x, data, dataset = "", groups){
         values <- as.numeric(unlist(values)[cols])
         values.df <- data.frame(values, groups)
         sum.var <- summarySE(values.df, measurevar = "values", groupvars = "groups")
-        #sum.var$sd <- ifelse(is.na(sum.var$sd), 0.001, sum.var$sd)
-        #sum.var$se <- ifelse(is.na(sum.var$se), 0.001, sum.var$se)
-        #sum.var$ci <- ifelse(is.na(sum.var$ci), 0.001, sum.var$ci)
         
-        
-        ggplot(sum.var, aes(x = factor(groups), y = values, fill = groups)) +
+        g <- ggplot(sum.var, aes(x = factor(groups), y = values, fill = groups)) +
             geom_bar(stat = "identity") +
             geom_errorbar(aes(ymin = values - se, ymax = values + se),
                           size = 0.2,
                           width = 0.2) +
             scale_fill_manual(values = c6) +
-            labs(title = paste(x, " from ", dataset), x = "", y = "Counts") + 
+            labs(title = paste(x, dataset), x = "", y = "Counts") + 
         theme_bw() +
         theme(panel.grid.major = element_blank(), 
               legend.position = "none",
               axis.text.x = element_text(angle = 45, hjust = 1))
+        return(g)
     }
+}
+
+
+
+multiplot <- function(..., plotlist = NULL, file, cols = 1, layout = NULL) {
+      require(grid)
+    
+      plots <- c(list(...), plotlist)
+    
+      numPlots = length(plots)
+    
+      if (is.null(layout)) {
+        layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                        ncol = cols, nrow = ceiling(numPlots/cols))
+      }
+    
+      if (numPlots == 1) {
+        print(plots[[1]])
+    
+      } else {
+        grid.newpage()
+        pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+        for (i in 1:numPlots) {
+          matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+    
+          print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                          layout.pos.col = matchidx$col))
+        }
+      }
 }
 
 old.hk <- c("GAPDH", "RPL13A", "ACTB")
@@ -465,14 +493,25 @@ new.hk <- c("C1orf43", "CHMP2A", "EMC7", "GPI", "PSMB2", "RAB7A", "REEP5", "SNRP
 others <- c("SMARCA5","HOXA1","H2AFY")
 ercc.genes <- c("ERCC-00002", "ERCC-00003", "ERCC-00004")
 
-lapply(ercc.genes, plotGenes, counts.df, "Raw", groups)
-lapply(ercc.genes, plotGenes, tmm.df, "TMM", groups)
-lapply(ercc.genes, plotGenes, deseq.df, "DESeq", groups)
-lapply(ercc.genes, plotGenes, loess.df, "LOESS", groups)
+datasets <- list(counts.df, tmm.df, deseq.df, loess.df)
+setnames <- c("Raw", "TMM", "DESeq", "LOESS")
+names(datasets) <- setnames
+
+plotMore <- function(datasets, genes){
+    res <- lapply(genes, plotGenes, datasets, groups = groups)
+    multiplot(plotlist = res, cols = 3 )
+}
+
+lapply(datasets, plotMore, old.hk)
+```
+
+res <- lapply(ercc.genes, plotGenes, tmm.df, "TMM", groups)
+res <- lapply(ercc.genes, plotGenes, deseq.df, "DESeq", groups)
+res <- lapply(ercc.genes, plotGenes, loess.df, "LOESS", groups)
+
+res <- lapply(old.hk, plotGenes, counts.df, "Raw", groups)
 
 
-
-lapply(old.hk, plotGenes, counts.df, "Raw", groups)
 lapply(old.hk, plotGenes, tmm.df, "TMM", groups)
 lapply(old.hk, plotGenes, deseq.df, "DESeq", groups)
 lapply(old.hk, plotGenes, loess.df, "LOESS", groups)
@@ -489,6 +528,6 @@ lapply(others, plotGenes, tmm.df, "TMM", groups)
 lapply(others, plotGenes, deseq.df, "DESeq", groups)
 lapply(others, plotGenes, loess.df, "LOESS", groups)
 lapply(others, plotGenes, rpkms.loess.df, "RPKM+LOESS", groups)
-```
+
 
 [001]:http://www.lifetechnologies.com/order/catalog/product/4456740
