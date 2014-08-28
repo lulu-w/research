@@ -1,7 +1,6 @@
 ```{r echo=FALSE}
 library(knitr)
 opts_chunk$set(echo=FALSE)
-opts_knit$set(root.dir="C:/Users/lwang336/Desktop/workdir/kazak/results")
 ```
 
 ---
@@ -16,7 +15,7 @@ output: html_document
 In this analysis, we started with `.bam` files containing RNA-seq reads aligned to hg19. The first metadata file is the `libs` file which contains the name and total mapped reads of all libraries.
 
 ```{r cache=TRUE}
-libs <- read.delim("tmap_lib_size.tsv", header=TRUE,sep="\t")
+libs <- read.delim("./kazak_data/tmap_lib_size.tsv", header=TRUE,sep="\t")
 ```
 
 ```{r colors}
@@ -29,12 +28,6 @@ pal2 <- colorRampPalette(c6[3:4])
 pal3 <- colorRampPalette(c6[5:6])
 
 c15 <- c(pal1(7)[c(1:2, 5:7)], pal2(6)[c(1:2, 5:6)], pal3(8)[c(1:3, 6:8)])
-
-#Temp Insertion #
-#c6.container <- c6
-#c6 <- c6[1:4]
-#c15 <- c15[1:9]
-#Temp Insertion #
 ```
 
 In this data set, we have **`r nrow(libs)`** libraries that correspond to **six** different conditions:
@@ -53,7 +46,7 @@ Each file contains mapped reads were pooled together, compared against RefSeq ge
 The raw counts for each transcript is calculated by couting the number of reads overlapped with the **exons** of both protein-coding and non-coding **RefSeq transcripts**.
 
 ```{r readCountsMatrix, cache=TRUE}
-tb <- read.table("counts_matrix.txt",header=FALSE)
+tb <- read.table("./kazak_data/counts_matrix.txt",header=FALSE)
 counts <- as.matrix(tb[,2:16])
 rownames(counts) <- tb[,1]
 rm(tb)
@@ -83,21 +76,28 @@ plotDistribution <- function(data, title = ""){
 }
 
 plotDistribution(counts+1, "Distribution of Read Counts")
-#plotDistribution(counts[, 1:9]+1, "Distribution of Read Counts")
 ```
 
-In this analysis, we started with **`r nrow(counts)`** RefSeq transcript annotations.
+In this analysis, the extremely low libraries were discarded. We started with **`r nrow(counts)`** RefSeq transcript annotations.
+
+```{r filterLibs}
+lib_index <- c(1:5, 7, 9, 12, 14:15)
+c15 <- c15[lib_index]
+counts <- counts[, lib_index]
+head(counts, 2)
+plotDistribution(counts+1, "Distribution of Read Counts")
+```
 
 ## ERCC Counts
 
 The ERCC counts for each library were downloaded from the **Ion Proton** server with the help from James. The distribution of ERCC counts is shown below:
 
 ```{r readERCC}
-ercc <- read.table("ercc_counts.txt", header = TRUE)
+ercc <- read.table("./kazak_data/ercc_counts.txt", header = TRUE)
+ercc <- ercc[, lib_index]
 head(ercc, 2)
 
 plotDistribution(ercc+1, "Distribution of ERCC Counts")
-#plotDistribution(ercc[, 1:9]+1, "Distribution of ERCC Counts")
 ```
 
 In general, the distribution of **`r nrow(ercc)`**ERCC counts follows the trend of total read counts.
@@ -122,7 +122,7 @@ colnames(true.ercc) = c("ercc.id", "mix1.attmoles")
 ```
 
 
-```{r obsERCCvsTrue, fig.height = 14, fig.width = 10}
+```{r obsERCCvsTrue, fig.height = 9, fig.width = 10}
 library(reshape)
 library(lattice)
 
@@ -141,7 +141,7 @@ erccOvsE <- function(data, title = ""){
     mdf$sample <- ordered(mdf$sample)
     
     xyplot( log2(value + 1) ~ log2(expected+1) | sample, data = mdf, 
-            layout = c(3,5), 
+            layout = c(2,5), 
             as.table = TRUE, 
             pch = 20, 
             col = rgb(70, 130, 180, 100, maxColorValue = 255), 
@@ -166,15 +166,13 @@ The **dashed line** in panels above shows the empirical cutoff for low read coun
 plotPairs <- function(data, title = ""){
     pairs(log2(data), col = rgb(0,0.5,1,0.2), pch = 16, main = paste(title))
 }
-plotPairs(ercc[, 1:5], "RAW ERCC Correlation of SR")
-plotPairs(ercc[, 6:9], "RAW ERCC Correlation of SEN")
 ```
 
 
 # Normalization
 
 ```{r exonLengths, cache=TRUE}
-exon.lengths <- t(read.delim("exon_lengths.tsv",header=TRUE,sep="\t"))
+exon.lengths <- t(read.delim("./kazak_data/exon_lengths.tsv",header=TRUE,sep="\t"))
 ```
 
 The exon length of each RefSeq transcripts were calculated using the `RefSeq.gtf` file downloaded from UCSC genome browser. 
@@ -254,16 +252,17 @@ colnames(ercc.df) <- gsub("ercc.id", "id", colnames(ercc.df))
 colnames(counts.df) <- gsub("Length", "length", colnames(counts.df))
 counts.df <- rbind(ercc.df, counts.df)
 
-groups <- colnames(counts.df)[2:16]
+dataCols <- grep("sr|sen|rej", colnames(counts.df), perl = TRUE)
+annoCols <- grep("id|symbol|length", colnames(counts.df), perl = TRUE)
+
+groups <- colnames(counts.df)[dataCols]
 groups <- gsub("_[0-9]+", "", groups)
 groups <- factor(groups, levels = unique(groups))
 ```
 
-```{r}
+```{r message = FALSE}
 library(edgeR)
-dge <- DGEList(counts = counts.df[, 2:16], group = groups, genes = counts.df[, c(1, 17, 18)])
-
-#dge <- DGEList(counts = counts.df[, 2:10], group = factor(groups[1:9]), genes = counts.df[, c(1, 17)])
+dge <- DGEList(counts = counts.df[, dataCols], group = groups, genes = counts.df[, annoCols])
 ```
 
 ## Filtering Low Expression Sequences
@@ -271,12 +270,11 @@ dge <- DGEList(counts = counts.df[, 2:16], group = groups, genes = counts.df[, c
 
 ```{r FilterCounts}
 #Filter Low Count Seqeunces
-keep <- apply(dge$counts, 1, min) > 3
-#keep <- rowSums(cpm(dge) > 1) >= 2
+#keep <- apply(dge$counts, 1, min) > 3
+keep <- rowSums(cpm(dge) > 1) >= 2
 dge <- dge[keep, ]
 
-#plotDistribution(dge$counts, "Distribution of Filtered Counts")
-plotDistribution(dge$counts[, 1:9], "Distribution of Filtered Counts")
+plotDistribution(dge$counts, "Distribution of Filtered Counts")
 
 counts.df <- data.frame(dge$counts, dge$genes)
 ```
@@ -318,8 +316,6 @@ library(ggplot2)
 
 plotDistribution(rpkms, "Distribution of RPKM")
 plotDistribution(rpkms[grep("ERCC-", dge$genes$id), ], "RPKM Normalized ERCC Sequences")
-#plotDistribution(rpkms[, 1:9], "Distribution of RPKM")
-#plotDistribution(rpkms[grep("ERCC-", dge$genes$id), 1:9], "RPKM Normalized ERCC Sequences")
 ```
 
 ## TMM Normalization
@@ -336,8 +332,6 @@ library(ggplot2)
 
 plotDistribution(tmm, "TMM Normalized Gene Expression")
 plotDistribution(tmm[grep("ERCC-", dge$genes$id), ], "TMM Normalized ERCC Sequences")
-#plotDistribution(tmm[, 1:9], "TMM Normalized Gene Expression")
-#plotDistribution(tmm[grep("ERCC-", dge$genes$id), 1:9], "TMM Normalized ERCC Sequences")
 
 tmm.df <- data.frame(tmm, dge$genes)
 ```
@@ -376,7 +370,7 @@ deseq.df <- data.frame(deseq, dge$genes)
 
 ```{r LOESS, message = FALSE}
 library(affy)
-loess <- normalize.loess(dge$counts, subset = grep("ERCC-", dge$genes$id), maxit = 3, verbose = FALSE)
+loess <- normalize.loess(dge$counts+0.5, subset = grep("ERCC-", dge$genes$id), maxit = 3, verbose = FALSE)
 ```
 
 ```{r LOESSDensity}
@@ -399,7 +393,7 @@ erccOvsE(tmm.df, "ERCC Expected vs. LOESS Normalized")
 
 ```{r rpkmLOESS, message = FALSE}
 library(affy)
-rpkms.loess <- normalize.loess(rpkms, subset = grep("ERCC-", rownames(rpkms)), maxit = 3, verbose = FALSE)
+rpkms.loess <- normalize.loess(rpkms+0.001, subset = grep("ERCC-", rownames(rpkms)), maxit = 3, verbose = FALSE)
 ```
 
 ```{r rpkmLOESSDensity}
@@ -433,7 +427,7 @@ plotMA(res)
 
 # Expression Level of Individual Genes/Sequences
 
-```{r IndividualGeneExpression, message = FALSE, fig.width = 3, fig.height = 4}
+```{r IndividualGeneExpression, message = FALSE, fig.width = 3, fig.height = 4, warnings = FALSE}
 library(bear)
 #c6 <- c6.container
 plotGenes <- function(x, data, dataset = "", groups){
@@ -447,6 +441,10 @@ plotGenes <- function(x, data, dataset = "", groups){
         values <- as.numeric(unlist(values)[cols])
         values.df <- data.frame(values, groups)
         sum.var <- summarySE(values.df, measurevar = "values", groupvars = "groups")
+        #sum.var$sd <- ifelse(is.na(sum.var$sd), 0.001, sum.var$sd)
+        #sum.var$se <- ifelse(is.na(sum.var$se), 0.001, sum.var$se)
+        #sum.var$ci <- ifelse(is.na(sum.var$ci), 0.001, sum.var$ci)
+        
         
         ggplot(sum.var, aes(x = factor(groups), y = values, fill = groups)) +
             geom_bar(stat = "identity") +
