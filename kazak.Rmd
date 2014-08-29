@@ -141,7 +141,7 @@ erccOvsE <- function(data, title = ""){
     mdf$sample <- ordered(mdf$sample)
     
     xyplot( log2(value + 1) ~ log2(expected+1) | sample, data = mdf, 
-            layout = c(2,5), 
+            layout = c(3,4), 
             as.table = TRUE, 
             pch = 20, 
             col = rgb(70, 130, 180, 100, maxColorValue = 255), 
@@ -432,7 +432,7 @@ library(bear)
 #c6 <- c6.container
 plotGenes <- function(x, data, dataset = "", groups){
     values <- data[data$hgnc_symbol == x, ]
-    ifelse(nchar(dataset == 0), dataset, paste(" from ", dataset))
+    dataset <- ifelse(nchar(dataset) == 0, dataset, paste(" from ", dataset))
     if(nrow(values) == 0){
         print(paste("No data found for ", x))
     }
@@ -497,37 +497,17 @@ datasets <- list(counts.df, tmm.df, deseq.df, loess.df)
 setnames <- c("Raw", "TMM", "DESeq", "LOESS")
 names(datasets) <- setnames
 
-plotMore <- function(datasets, genes){
-    res <- lapply(genes, plotGenes, datasets, groups = groups)
+plotMore <- function(datasets, setnames, genes){
+    res <- lapply(genes, plotGenes, datasets, setnames, groups = groups)
     multiplot(plotlist = res, cols = 3 )
 }
 
-lapply(datasets, plotMore, old.hk)
+
+Map(plotMore, datasets, setnames, rep(list(old.hk), length(datasets)))
+Map(plotMore, datasets, setnames, rep(list(new.hk), length(datasets)))
+Map(plotMore, datasets, setnames, rep(list(ercc.genes), length(datasets)))
+Map(plotMore, datasets, setnames, rep(list(others), length(datasets)))
 ```
-
-res <- lapply(ercc.genes, plotGenes, tmm.df, "TMM", groups)
-res <- lapply(ercc.genes, plotGenes, deseq.df, "DESeq", groups)
-res <- lapply(ercc.genes, plotGenes, loess.df, "LOESS", groups)
-
-res <- lapply(old.hk, plotGenes, counts.df, "Raw", groups)
-
-
-lapply(old.hk, plotGenes, tmm.df, "TMM", groups)
-lapply(old.hk, plotGenes, deseq.df, "DESeq", groups)
-lapply(old.hk, plotGenes, loess.df, "LOESS", groups)
-lapply(old.hk, plotGenes, rpkms.loess.df, "RPKM+LOESS", groups)
-
-lapply(new.hk, plotGenes, counts.df, "Raw", groups)
-lapply(new.hk, plotGenes, tmm.df, "TMM", groups)
-lapply(new.hk, plotGenes, deseq.df, "DESeq", groups)
-lapply(new.hk, plotGenes, loess.df, "LOESS", groups)
-lapply(new.hk, plotGenes, rpkms.loess.df, "RPKM+LOESS", groups)
-
-lapply(others, plotGenes, counts.df, "Raw", groups)
-lapply(others, plotGenes, tmm.df, "TMM", groups)
-lapply(others, plotGenes, deseq.df, "DESeq", groups)
-lapply(others, plotGenes, loess.df, "LOESS", groups)
-lapply(others, plotGenes, rpkms.loess.df, "RPKM+LOESS", groups)
 
 
 [001]:http://www.lifetechnologies.com/order/catalog/product/4456740
