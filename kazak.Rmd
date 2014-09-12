@@ -431,6 +431,7 @@ rpkms.loess.df <- data.frame(rpkms.loess, dge$genes)
 cdsBlind = estimateDispersions(cds, method = "blind", sharingMode="fit-only")
 plotDispEsts(cdsBlind)
 ```
+<!--
 
 ## Variance Stablizing & Clustering
 
@@ -439,13 +440,15 @@ plotDispEsts(cdsBlind)
 vsd = varianceStabilizingTransformation(cdsBlind)
 ```
 
-```{r fig.height = 4}
+```{r fig.height = 4, message = FALSE}
 library(vsn)
 par(mfrow=(c(1, 2)))
 notAllZero = (rowSums(counts(cds)) > 0)
 meanSdPlot(log2(counts(cds)[notAllZero, ] + 1))
 meanSdPlot(vsd[notAllZero, ])
 ```
+
+-->
 
 ## Pairwise distance between samples
 ```{r distSamples, message = FALSE, fig.height = 6}
@@ -506,7 +509,9 @@ res = nbinomTest( cdsBlind, "sr_untreated", "sr_treated")
 
 ```{r plotDESeqRes}
 plotMA(res)
-hist(res$pval, breaks = 100, col = "steelblue", main = "", xlab = "p-value")
+hist(res$padj, breaks = 100, col = "steelblue", main = "", xlab = "Adjusted p-value")
+abline(v=0.05, col = "red", lty = 2)
+
 getDEset <- function(res, pval.cut){
     res.sig <- res[res$padj < pval.cut, ]
     up <- res.sig[res.sig$log2FoldChange > 0, ]
@@ -536,7 +541,8 @@ res = nbinomTest( cdsBlind, "sen_untreated", "sen_treated")
 
 ```{r plotDEsen}
 plotMA(res)
-hist(res$pval, breaks = 100, col = "steelblue", main = "", xlab = "p-value")
+hist(res$padj, breaks = 100, col = "steelblue", main = "", xlab = "Adjusted p-value")
+abline(v=0.05, col = "red", lty = 2)
 
 res <- getDEset(res, 0.05)
 
@@ -557,7 +563,8 @@ res = nbinomTest( cdsBlind, "sr_untreated", "sen_untreated")
 
 ```{r plotDEsenSR}
 plotMA(res)
-hist(res$pval, breaks = 100, col = "steelblue", main = "", xlab = "p-value")
+hist(res$padj, breaks = 100, col = "steelblue", main = "", xlab = "Adjusted p-value")
+abline(v=0.05, col = "red", lty = 2)
 
 res <- getDEset(res, 0.05)
 
@@ -574,7 +581,7 @@ In total, there are **`r nrow(up.untr.des)+nrow(dn.untr.des)`** statistically si
 
 ### SR_treated vs. SR_untreated
 
-```{r NOISeqSR, cache = TRUE}
+```{r NOISeqSR, message = FALSE, results = "hide", cache = TRUE}
 library(NOISeq)
 runNOI <- function(condition){
     facs <- groups[grep(condition, groups, perl = TRUE)]
@@ -588,38 +595,56 @@ runNOI <- function(condition){
 res <- runNOI("sr")
 ```
 
-```{r}
+```{r message = FALSE}
 library(NOISeq)
-up.sr.noi <- degenes(res, q=0.7, M="up")
-dn.sr.noi <- degenes(res, q=0.7, M="down")
+q.cut = 0.7
+DE.plot(res, q=q.cut, graphic="MD")
+prob_val <- res@results[[1]]$prob
+hist(prob_val, breaks = 100, col = "steelblue", main = "", xlab = "Probability of DE")
+abline(v = quantile(prob_val, q.cut, na.rm = TRUE), col = "red", lty = 2)
+
+up.sr.noi <- degenes(res, q=q.cut, M="up")
+dn.sr.noi <- degenes(res, q=q.cut, M="down")
 up.sr.noi.df <- data.frame(id = rownames(up.sr.noi), up.sr.noi)
 dn.sr.noi.df <- data.frame(id = rownames(dn.sr.noi), dn.sr.noi)
 ```
 
 ### SEN_treated vs. SEN_untreated
 
-```{r NOISeqSEN, cache = TRUE}
+```{r NOISeqSEN, results = "hide", cache = TRUE}
 res <- runNOI("sen")
 ```
 
 ```{r}
 library(NOISeq)
-up.sen.noi <- degenes(res, q=0.7, M="up")
-dn.sen.noi <- degenes(res, q=0.7, M="down")
+
+DE.plot(res, q=q.cut, graphic="MD")
+prob_val <- res@results[[1]]$prob
+hist(prob_val, breaks = 100, col = "steelblue", main = "", xlab = "Probability of DE")
+abline(v = quantile(prob_val, q.cut, na.rm = TRUE), col = "red", lty = 2)
+
+up.sen.noi <- degenes(res, q=q.cut, M="up")
+dn.sen.noi <- degenes(res, q=q.cut, M="down")
 up.sen.noi.df <- data.frame(id = rownames(up.sen.noi), up.sen.noi)
 dn.sen.noi.df <- data.frame(id = rownames(dn.sen.noi), dn.sen.noi)
 ```
 
 ### SEN_untreated vs. SR_untreated
 
-```{r NOISeqUN, cache = TRUE}
+```{r NOISeqUN, results = "hide", cache = TRUE}
 res <- runNOI("sen_untreated|sr_untreated")
 ```
 
 ```{r}
 library(NOISeq)
-up.untr.noi <- degenes(res, q=0.7, M="down") #Up in SEN
-dn.untr.noi <- degenes(res, q=0.7, M="up") #Down in SEN
+
+DE.plot(res, q=q.cut, graphic="MD")
+prob_val <- res@results[[1]]$prob
+hist(prob_val, breaks = 100, col = "steelblue", main = "", xlab = "Probability of DE")
+abline(v = quantile(prob_val, q.cut, na.rm = TRUE), col = "red", lty = 2)
+
+up.untr.noi <- degenes(res, q=q.cut, M="down") #Up in SEN
+dn.untr.noi <- degenes(res, q=q.cut, M="up") #Down in SEN
 up.untr.noi.df <- data.frame(id = rownames(up.untr.noi), up.untr.noi)
 dn.untr.noi.df <- data.frame(id = rownames(dn.untr.noi), dn.untr.noi)
 ```
@@ -629,8 +654,9 @@ dn.untr.noi.df <- data.frame(id = rownames(dn.untr.noi), dn.untr.noi)
 
 ### SR_treated vs. SR_untreated
 
-```{r DEGSeqSR, cache = TRUE}
+```{r DEGSeqSR, results = "hide", cache = TRUE}
 library(DEGseq)
+
 runDEG <- function(cond1, cond2){
     par(mfrow = c(3, 2), mar = rep(2, 4))
     gem1 = as.matrix(tmm.df[, c(grep("hgnc", colnames(tmm.df)), grep(cond1, colnames(tmm.df)))])
@@ -660,41 +686,70 @@ runDEG <- function(cond1, cond2){
 res <- runDEG("sr_treated", "sr_untreated")
 ```
 
+```{r}
+getPath <- function(cond1, cond2){
+    outDir = paste(cond1,"_", cond2, sep = "")
+    pic <- paste("./", outDir, "/output/result.png", sep = "")
+}
+
+pic <- getPath("sr_treated", "sr_untreated")
+```
+
+<img src="./`r pic`" />
+
 ```{r DEGSeqSRres}
 res1 <- res[complete.cases(res), ]
 up.sr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change > 0, ]
 dn.sr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change < 0, ]
+hist(res1$q.value, breaks = 100, col = "steelblue", main = "", xlab = "Adjusted p-value")
+abline(v=0.05, col = "red", lty = 2)
 ```
 
 ### SEN_treated vs. SEN_untreated
 
-```{r DEGSeqSEN, cache = TRUE}
+```{r DEGSeqSEN, results = "hide", cache = TRUE}
 res <- runDEG("sen_treated", "sen_untreated")
 ```
+
+```{r}
+pic <- getPath("sen_treated", "sen_untreated")
+```
+
+<img src="./`r pic`" />
 
 ```{r DEGSeqSENres}
 res1 <- res[complete.cases(res), ]
 up.sen.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change > 0, ]
 dn.sen.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change < 0, ]
+hist(res1$q.value, breaks = 100, col = "steelblue", main = "", xlab = "Adjusted p-value")
+abline(v=0.05, col = "red", lty = 2)
 ```
 
 ### SEN_untreated vs. SR_untreated
 
-```{r DEGSeqUntr, cache = TRUE}
+```{r DEGSeqUntr, cache = TRUE, results="hide"}
 res <- runDEG("sen_untreated", "sr_untreated")
 ```
+
+```{r}
+pic <- getPath("sen_treated", "sen_untreated")
+```
+
+<img src="./`r pic`" />
 
 ```{r DEGSeqUntrRes}
 res1 <- res[complete.cases(res), ]
 up.untr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change > 0, ]
 dn.untr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change < 0, ]
+hist(res1$q.value, breaks = 100, col = "steelblue", main = "", xlab = "Adjusted p-value")
+abline(v=0.05, col = "red", lty = 2)
 ```
 
 ## Compare Differential Expression Methods
 
 ###Compare DESeq and NOISeq 
 
-```{r}
+```{r results = "hide"}
 library(VennDiagram)
 library(RColorBrewer)
 vennGen <- function(name1, up.m1, dn.m1, id1, name2, up.m2, dn.m2, id2){
@@ -740,7 +795,7 @@ venn.diagram(x, "untr_DESeq_NOISeq.png", imagetype = "png", fill = brewer.pal(4,
 
 
 ###Compare NOISeq and DEGseq
-```{r}
+```{r results = "hide"}
 x <- vennGen("DEGseq", up.sr.deg, dn.sr.deg, "GeneNames", "NOISeq", up.sr.noi.df, dn.sr.noi.df, "id")
 venn.diagram(x, "sr_NOISeq_DEGseq.png", imagetype = "png", fill = brewer.pal(4, "BuGn"))
 
@@ -764,11 +819,19 @@ venn.diagram(x, "untr_NOISeq_DEGseq.png", imagetype = "png", fill = brewer.pal(4
 <img src="untr_NOISeq_DEGseq.png" width=500 height=500 />
 
 
+
+# Meeting Notes
+
+[20140523][002]
+
+[20140606][003]
+
+[20140828][004]
+
+
 [img01]:Kazak_Overall_experimental_design.jpg
 
-
-
-
-
-
 [001]:http://www.lifetechnologies.com/order/catalog/product/4456740
+[002]:./slides/20140523.Overall_analytical_design.pdf
+[003]:./slides/20140606.ERCC.pdf
+[004]:./slides/20140828.Normalization_of_kazak_RNA-seq_data.pdf
