@@ -81,24 +81,12 @@ plotDistribution <- function(data, title = ""){
 plotDistribution(counts+1, "Distribution of Read Counts")
 ```
 
-In this analysis, **technical replicates for each condition were combined** to increase the total signal. We started with **`r nrow(counts)`** RefSeq transcript annotations.
+In this analysis, the extremely low libraries were discarded. We started with **`r nrow(counts)`** RefSeq transcript annotations.
 
-```{r filterLibs, fig.width = 6}
-c15 <- c6
-sr_tr = grep("sr_treated", colnames(counts))
-sr_un = grep("sr_untreated", colnames(counts))
-sen_tr = grep("sen_treated", colnames(counts))
-sen_un = grep("sen_untreated", colnames(counts))
-rej_tr = grep("rej_treated", colnames(counts))
-rej_un = grep("rej_untreated", colnames(counts))
-
-
-counts <- data.frame( sr_treated = apply(counts[, sr_tr], 1, sum),
-                      sr_untreated = apply(counts[, sr_un], 1, sum),
-                      sen_treated = apply(counts[, sen_tr], 1, sum),
-                      sen_untreated = apply(counts[, sen_un], 1, sum),
-                      rej_treated = apply(counts[, rej_tr], 1, sum),
-                      rej_untreated = apply(counts[, rej_un], 1, sum))
+```{r filterLibs}
+lib_index <- c(1:5, 7, 9, 12, 14:15)
+c15 <- c15[lib_index]
+counts <- counts[, lib_index]
 head(counts, 2)
 plotDistribution(counts+1, "Distribution of Read Counts")
 ```
@@ -107,15 +95,9 @@ plotDistribution(counts+1, "Distribution of Read Counts")
 
 The ERCC counts for each library were downloaded from the **Ion Proton** server with the help from James. The distribution of ERCC counts is shown below:
 
-```{r readERCC, fig.width = 6}
+```{r readERCC}
 ercc <- read.table("./kazak_data/ercc_counts.txt", header = TRUE)
-
-ercc <- data.frame( sr_treated = apply(ercc[, sr_tr], 1, sum),
-                    sr_untreated = apply(ercc[, sr_un], 1, sum),
-                    sen_treated = apply(ercc[, sen_tr], 1, sum),
-                    sen_untreated = apply(ercc[, sen_un], 1, sum),
-                    rej_treated = apply(ercc[, rej_tr], 1, sum),
-                    rej_untreated = apply(ercc[, rej_un], 1, sum))
+ercc <- ercc[, lib_index]
 head(ercc, 2)
 
 plotDistribution(ercc+1, "Distribution of ERCC Counts")
@@ -143,7 +125,7 @@ colnames(true.ercc) = c("ercc.id", "mix1.attmoles")
 ```
 
 
-```{r obsERCCvsTrue, fig.height = 6, fig.width = 9}
+```{r obsERCCvsTrue, fig.height = 9, fig.width = 10}
 library(reshape)
 library(lattice)
 
@@ -162,7 +144,7 @@ erccOvsE <- function(data, title = ""){
     mdf$sample <- ordered(mdf$sample)
     
     xyplot( log2(value + 1) ~ log2(expected+1) | sample, data = mdf, 
-            layout = c(3,2), 
+            layout = c(3,4), 
             as.table = TRUE, 
             pch = 20, 
             col = rgb(70, 130, 180, 100, maxColorValue = 255), 
@@ -232,7 +214,6 @@ getSymbol <- function(ids, id.type, attributes){
     res <- getBM( attributes = c(paste(id.type), paste(attributes)), filters = id.type, values = ids, mart = ensembl )
 }
 
-
 res1 <- getSymbol(pcg.id, "refseq_mrna", attributes = "hgnc_symbol")
 res2 <- getSymbol(nc.id, "refseq_ncrna", attributes = "hgnc_symbol")
 ```
@@ -290,10 +271,10 @@ dge <- DGEList(counts = counts.df[, dataCols], group = groups, genes = counts.df
 ## Filtering Low Expression Sequences
 
 
-```{r FilterCounts, fig.width = 6}
+```{r FilterCounts}
 #Filter Low Count Seqeunces
 #keep <- apply(dge$counts, 1, min) > 3
-keep <- rowSums(cpm(dge) > 1) >= 1
+keep <- rowSums(cpm(dge) > 1) >= 2
 dge <- dge[keep, ]
 
 plotDistribution(dge$counts, "Distribution of Filtered Counts")
@@ -301,7 +282,7 @@ plotDistribution(dge$counts, "Distribution of Filtered Counts")
 counts.df <- data.frame(dge$counts, dge$genes)
 ```
 
-After filtering, **`r sum(keep)`** transcripts were kept for downstream analysis.
+After filtering, **`r length(keep)`** transcripts were kept for downstream analysis.
 
 ## Expression of Genes
 Since different RefSeq transcripts for the same gene symbol shares most of their reads, therefore, among the **`r nrow(counts.df)`** transcripts, the transcript with highest overall count for each gene symbol were used for that particular gene symbol. 
@@ -332,7 +313,7 @@ rownames(rpkms) <- dge$genes$id
 ```
 
 
-```{r RpkmDensity, fig.width = 6}
+```{r RpkmDensity}
 library(reshape)
 library(ggplot2)
 
@@ -348,7 +329,7 @@ dge <- calcNormFactors(dge)
 tmm <- cpm(dge, normalized.lib.sizes = TRUE)
 ```
 
-```{r TMMDensity, fig.width = 6}
+```{r TMMDensity}
 library(reshape)
 library(ggplot2)
 
@@ -358,7 +339,7 @@ plotDistribution(tmm[grep("ERCC-", dge$genes$id), ], "TMM Normalized ERCC Sequen
 tmm.df <- data.frame(tmm, dge$genes)
 ```
 
-```{r erccTMMvsExpected, fig.height = 6, fig.width = 9}
+```{r erccTMMvsExpected, fig.height = 14, fig.width = 10}
 erccOvsE(tmm.df, "ERCC Expected vs. TMM Normalized")
 ```
 
@@ -375,12 +356,14 @@ sizeFactors(cds)
 deseq <- counts(cds, normalized = TRUE)
 ```
 
-```{r DESeqDensity, fig.width = 6}
+```{r DESeqDensity}
 library(reshape)
 library(ggplot2)
 
 plotDistribution(deseq, "DESeq Normalized Counts")
 plotDistribution(deseq[grep("ERCC-", rownames(deseq)), ], "DESeq Normalized ERCC")
+#plotDistribution(deseq[, 1:9], "DESeq Normalized Counts")
+#plotDistribution(deseq[grep("ERCC-", rownames(deseq)), 1:9], "DESeq Normalized ERCC")
 
 deseq.df <- data.frame(deseq, dge$genes)
 ```
@@ -393,17 +376,19 @@ library(affy)
 loess <- normalize.loess(dge$counts+0.5, subset = grep("ERCC-", dge$genes$id), maxit = 3, verbose = FALSE)
 ```
 
-```{r LOESSDensity, fig.width = 6}
+```{r LOESSDensity}
 library(reshape)
 library(ggplot2)
 
 plotDistribution(loess, "LOESS Normalized Gene Expression")
 plotDistribution(loess[grep("ERCC-", dge$genes$id), ], "LOESS Normalized ERCC Sequences")
+#plotDistribution(loess[, 1:9], "LOESS Normalized Gene Expression")
+#plotDistribution(loess[grep("ERCC-", dge$genes$id), 1:9], "LOESS Normalized ERCC Sequences")
 
 loess.df <- data.frame(loess, dge$genes )
 ```
 
-```{r erccLOESSvsExpected, fig.height = 6, fig.width = 9}
+```{r erccLOESSvsExpected, fig.height = 14, fig.width = 10}
 erccOvsE(tmm.df, "ERCC Expected vs. LOESS Normalized")
 ```
 
@@ -414,28 +399,31 @@ library(affy)
 rpkms.loess <- normalize.loess(rpkms+0.001, subset = grep("ERCC-", rownames(rpkms)), maxit = 3, verbose = FALSE)
 ```
 
-```{r rpkmLOESSDensity, fig.width = 6}
+```{r rpkmLOESSDensity}
 library(reshape)
 library(ggplot2)
 
 plotDistribution(rpkms.loess, "RPKM + LOESS Normalized Gene Expression")
 plotDistribution(rpkms.loess[grep("ERCC-", rownames(rpkms.loess)), ], "RPKM+ LOESS Normalized ERCC")
+#plotDistribution(rpkms.loess[, 1:9], "RPKM + LOESS Normalized Gene Expression")
+#plotDistribution(rpkms.loess[grep("ERCC-", rownames(rpkms.loess)), 1:9], "RPKM+ LOESS Normalized ERCC")
 
 rpkms.loess.df <- data.frame(rpkms.loess, dge$genes)
 ```
 
 # Exploratory Analysis
+
 ## Variance estimation
 
 ```{r estVar}
-cdsBlind = estimateDispersions(cds, method = "blind", sharingMode="fit-only")
-plotDispEsts(cdsBlind)
+cds = estimateDispersions(cds)
+plotDispEsts(cds)
 ```
 
 ## Variance Stablizing & Clustering
 
 ```{r varStablize}
-#cdsBlind = estimateDispersions(cds, method = "blind")
+cdsBlind = estimateDispersions(cds, method = "blind")
 vsd = varianceStabilizingTransformation(cdsBlind)
 ```
 
@@ -448,7 +436,7 @@ meanSdPlot(vsd[notAllZero, ])
 ```
 
 ## Pairwise distance between samples
-```{r distSamples, message = FALSE, fig.height = 6}
+```{r distSamples, fig.height = 6}
 library(gplots)
 hmcol = colorRampPalette(c6[1:3])(100)
 dists = dist(t(exprs(vsd)))
@@ -462,7 +450,7 @@ heatmap.2(mat, trace = "none", col = rev(hmcol), margin = c(13, 13))
 ```
 
 
-```{r PCAallGene, fig.width = 5, fig.height = 3}
+```{r PCAallGene, fig.width = 6, fig.height = 3}
 pca1 <- prcomp(mat, scale = TRUE)
 df <- data.frame( x = pca1$rotation[, 1], y = pca1$rotation[, 2], condition = factor(rownames(pData(cds)), levels = rownames(pData(cds))))
 g <- ggplot(df, aes(x, y))
@@ -501,7 +489,7 @@ heatmap.2(zmat, col = hmcol, trace = "none", margin = c(10, 6))
 ### SR_treated vs. SR_untreated
 
 ```{r DEanalysis, cache = TRUE}
-res = nbinomTest( cdsBlind, "sr_untreated", "sr_treated")
+res = nbinomTest( cds, "sr_untreated", "sr_treated")
 ```
 
 ```{r plotDESeqRes}
@@ -531,7 +519,7 @@ In total, there are **`r nrow(up.sr.des)+nrow(dn.sr.des)`** statistically signif
 ### SEN_treated vs. SEN_untreated
 
 ```{r DEsen, cache = TRUE}
-res = nbinomTest( cdsBlind, "sen_untreated", "sen_treated")
+res = nbinomTest( cds, "sen_untreated", "sen_treated")
 ```
 
 ```{r plotDEsen}
@@ -552,7 +540,7 @@ In total, there are **`r nrow(up.sen.des)+nrow(dn.sen.des)`** statistically sign
 ### SEN_untreated vs. SR_untreated
 
 ```{r DEsenSR, cache = TRUE}
-res = nbinomTest( cdsBlind, "sr_untreated", "sen_untreated")
+res = nbinomTest( cds, "sr_untreated", "sen_untreated")
 ```
 
 ```{r plotDEsenSR}
@@ -570,205 +558,188 @@ head(dn.untr.des)
 
 In total, there are **`r nrow(up.untr.des)+nrow(dn.untr.des)`** statistically significant differentially expressed genes between **SEN_untreated and SR_untreated**. Among these genes, there are **`r nrow(up.untr.des)`** up-regulated and **`r nrow(dn.untr.des)`** in SEN untreated.
 
-## Calling Differential Expression with NOISeq
+## Calling Differential Expression with edgeR
 
 ### SR_treated vs. SR_untreated
 
-```{r NOISeqSR, cache = TRUE}
-library(NOISeq)
-runNOI <- function(condition){
-    facs <- groups[grep(condition, groups, perl = TRUE)]
-    facs <- data.frame(Treatment = factor(facs), sampleRun = factor(facs))
-    noiData = tmm[, grep(condition, colnames(tmm), perl = TRUE)]
-    rownames(noiData) = tmm.df$hgnc_symbol
-    noiData <- readData(noiData, factors=facs)
-    res <- noiseq(noiData, factor="Treatment", k=NULL, norm="n", pnr=0.2, v=0.02, nss=5, replicates="no")
+```{r testSRedgeR}
+dge <- estimateCommonDisp(dge)
+et <- exactTest(dge, pair = c("sr_untreated", "sr_treated"))
+```
+
+```{r edgeRdeSR}
+getEdgeR <- function(res, pval.cut, colname = ""){
+    hist(res$table$PValue, breaks = 100, col = "steelblue", main = "", xlab = "p-value")
+    de <- decideTestsDGE(res, p=pval.cut)
+    detags <- rownames(dge)[as.logical(de)]
+    plotSmear(et, de.tags = detags)
+    abline(h = c(-2, 2), col = "blue", lty = 2)
+    filter <- rownames(dge)[de == 1]
+    up <- cbind(et$genes[filter, ], tmm[filter, grep(colname, colnames(tmm), perl = TRUE)], et$table[filter, ])
+    filter <- rownames(dge)[de == -1]
+    dn <- cbind(et$genes[filter, ], tmm[filter, grep(colname, colnames(tmm), perl = TRUE)], et$table[filter, ])
+    res <- list(up, dn)
 }
 
-res <- runNOI("sr")
+res <- getEdgeR(et, 0.05, "sr")
+
+up.sr.edge <- res[[1]]
+dn.sr.edge <- res[[2]]
+
+head(up.sr.edge)
+head(dn.sr.edge)
 ```
 
-```{r}
-library(NOISeq)
-up.sr.noi <- degenes(res, q=0.7, M="up")
-dn.sr.noi <- degenes(res, q=0.7, M="down")
-up.sr.noi.df <- data.frame(id = rownames(up.sr.noi), up.sr.noi)
-dn.sr.noi.df <- data.frame(id = rownames(dn.sr.noi), dn.sr.noi)
-```
+In total, there are **`r nrow(up.sr.edge)+nrow(dn.sr.edge)`** statistically significant differentially expressed genes between **SR_untreated and SR_treated**. Among these genes, there are **`r nrow(up.sr.edge)`** up-regulated and **`r nrow(dn.sr.edge)`**.
 
 ### SEN_treated vs. SEN_untreated
-
-```{r NOISeqSEN, cache = TRUE}
-res <- runNOI("sen")
+```{r testSENedgeR}
+et <- exactTest(dge, pair = c("sen_untreated", "sen_treated"))
 ```
 
-```{r}
-library(NOISeq)
-up.sen.noi <- degenes(res, q=0.7, M="up")
-dn.sen.noi <- degenes(res, q=0.7, M="down")
-up.sen.noi.df <- data.frame(id = rownames(up.sen.noi), up.sen.noi)
-dn.sen.noi.df <- data.frame(id = rownames(dn.sen.noi), dn.sen.noi)
+```{r edgeRdeSEN}
+res <- getEdgeR(et, 0.05, "sen")
+
+up.sen.edge <- res[[1]]
+dn.sen.edge <- res[[2]]
+
+head(up.sen.edge)
+head(dn.sen.edge)
 ```
+
+In total, there are **`r nrow(up.sen.edge)+nrow(dn.sen.edge)`** statistically significant differentially expressed genes between **SEN_untreated and SEN_treated**. Among these genes, there are **`r nrow(up.sen.edge)`** up-regulated and **`r nrow(dn.sen.edge)`**.
 
 ### SEN_untreated vs. SR_untreated
-
-```{r NOISeqUN, cache = TRUE}
-res <- runNOI("sen_untreated|sr_untreated")
+```{r testUntreatEdgeR}
+et <- exactTest(dge, pair = c("sr_untreated", "sen_untreated"))
 ```
 
-```{r}
-library(NOISeq)
-up.untr.noi <- degenes(res, q=0.7, M="down") #Up in SEN
-dn.untr.noi <- degenes(res, q=0.7, M="up") #Down in SEN
-up.untr.noi.df <- data.frame(id = rownames(up.untr.noi), up.untr.noi)
-dn.untr.noi.df <- data.frame(id = rownames(dn.untr.noi), dn.untr.noi)
+```{r edgeRdeUntr}
+res <- getEdgeR(et, 0.05, "sr_untreated|sen_untreated")
+
+up.untr.edge <- res[[1]]
+dn.untr.edge <- res[[2]]
+
+head(up.untr.edge)
+head(dn.untr.edge)
 ```
 
+In total, there are **`r nrow(up.untr.edge)+nrow(dn.untr.edge)`** statistically significant differentially expressed genes between **SR_untreated and SEN_untreated**. Among these genes, there are **`r nrow(up.untr.edge)`** up-regulated and **`r nrow(dn.untr.edge)`**.
 
-## Calling Differential Expression with DEGSeq
-
-### SR_treated vs. SR_untreated
-
-```{r DEGSeqSR, cache = TRUE}
-library(DEGseq)
-runDEG <- function(cond1, cond2){
-    par(mfrow = c(3, 2), mar = rep(2, 4))
-    gem1 = as.matrix(tmm.df[, c(grep("hgnc", colnames(tmm.df)), grep(cond1, colnames(tmm.df)))])
-
-    gem2 = as.matrix(tmm.df[, c(grep("hgnc", colnames(tmm.df)), grep(cond2, colnames(tmm.df)))])
-    
-    outDir = paste(cond1,"_", cond2, sep = "")
-    DEGexp(geneExpMatrix1 = gem1, 
-           geneCol1 = 1, 
-           expCol1 = 2, 
-           groupLabel1 = cond1, 
-           geneExpMatrix2 = gem2, 
-           geneCol2 = 1, 
-           expCol2 = 2, 
-           groupLabel2 = cond2,
-           method = "MARS",
-           outputDir = outDir)
-    res <- read.delim(paste("./", outDir, "/output_score.txt", sep = ""),
-                      header = TRUE)
-    colnames(res) <- gsub("value1", cond1, colnames(res))
-    colnames(res) <- gsub("value2", cond2, colnames(res))
-    colnames(res) <- gsub("q.value.Benjamini.et.al..1995.", "q.value", colnames(res))
-    colnames(res) <- gsub("log2.Fold_change.", "log2.Fold_change", colnames(res))
-    return(res)
-}
-
-res <- runDEG("sr_treated", "sr_untreated")
-```
-
-```{r DEGSeqSRres}
-res1 <- res[complete.cases(res), ]
-up.sr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change > 0, ]
-dn.sr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change < 0, ]
-```
-
-### SEN_treated vs. SEN_untreated
-
-```{r DEGSeqSEN, cache = TRUE}
-res <- runDEG("sen_treated", "sen_untreated")
-```
-
-```{r DEGSeqSENres}
-res1 <- res[complete.cases(res), ]
-up.sen.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change > 0, ]
-dn.sen.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change < 0, ]
-```
-
-### SEN_untreated vs. SR_untreated
-
-```{r DEGSeqUntr, cache = TRUE}
-res <- runDEG("sen_untreated", "sr_untreated")
-```
-
-```{r DEGSeqUntrRes}
-res1 <- res[complete.cases(res), ]
-up.untr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change > 0, ]
-dn.untr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change < 0, ]
-```
-
-## Compare Differential Expression Methods
-
-###Compare DESeq and NOISeq 
+## Compare DESeq and edgeR
 
 ```{r}
 library(VennDiagram)
-library(RColorBrewer)
-vennGen <- function(name1, up.m1, dn.m1, id1, name2, up.m2, dn.m2, id2){
-    m1.up <- up.m1[, id1]
-    m1.dn <- dn.m1[, id1]
-    m2.up <- up.m2[, id2]
-    m2.dn <- dn.m2[, id2]
+vennGen <- function(up.des, dn.des, up.edge, dn.edge){
+    deseq.up <- up.des$id
+    deseq.dn <- dn.des$id
     ##Remove NA
-    m1.up <- m1.up[!is.na(m1.up)]
-    m1.dn <- m1.dn[!is.na(m1.dn)]
-    m2.up <- m2.up[!is.na(m2.up)]
-    m2.dn <- m2.dn[!is.na(m2.dn)]
-    
-    res <- list( m1.up, m1.dn, m2.up, m2.dn)
-    names(res) = c(paste(name1, "_up", sep = ""),
-                   paste(name1, "_down", sep = ""),
-                   paste(name2, "_up", sep = ""),
-                   paste(name2, "_down", sep = ""))
-    return(res)
+    deseq.up <- deseq.up[!is.na(deseq.up)]
+    deseq.dn <- deseq.dn[!is.na(deseq.dn)]
+    edger.up <- up.edge$hgnc_symbol
+    edger.dn <- dn.edge$hgnc_symbol
+    res <- list( DESeq_up = deseq.up, DESeq_down = deseq.dn, edgeR_up = edger.up, edgeR_down = edger.dn)
 }
 
-x <- vennGen("DESeq", up.sr.des, dn.sr.des,"hgnc_symbol", "NOISeq", up.sr.noi.df, dn.sr.noi.df, "id")
-venn.diagram(x, "sr_DESeq_NOISeq.png", imagetype = "png", fill = brewer.pal(4, "BuGn"))
+x <- vennGen(up.sr.des, dn.sr.des, up.sr.edge, dn.sr.edge)
+venn.diagram(x, "sr_DESeq_edgeR.tiff", fill = brewer.pal(4, "BuGn"))
 
-x <- vennGen("DESeq", up.sen.des, dn.sen.des, "hgnc_symbol", "NOISeq", up.sen.noi.df, dn.sen.noi.df, "id")
-venn.diagram(x, "sen_DESeq_NOISeq.png", imagetype = "png", fill = brewer.pal(4, "OrRd"))
+x <- vennGen(up.sen.des, dn.sen.des, up.sen.edge, dn.sen.edge)
+venn.diagram(x, "sen_DESeq_edgeR.tiff", fill = brewer.pal(4, "OrRd"))
 
-x <- vennGen("DESeq", up.untr.des, dn.untr.des, "hgnc_symbol", "NOISeq", up.untr.noi.df, dn.untr.noi.df, "id")
-venn.diagram(x, "untr_DESeq_NOISeq.png", imagetype = "png", fill = brewer.pal(4, "BuPu"))
+x <- vennGen(up.untr.des, dn.untr.des, up.untr.edge, dn.untr.edge)
+venn.diagram(x, "Untr_DESeq_edgeR.tiff", fill = brewer.pal(4, "BuPu"))
 ```
 
-####SR DESeq vs. SR NOISeq
-
-<img src="sr_DESeq_NOISeq.png" width=500 height=500 />
-
-####SEN DESeq vs. SEN NOISeq
-
-<img src="sen_DESeq_NOISeq.png" width=500 height=500 />
-
-####Untreated DESeq vs. Untreated NOISeq
-
-<img src="untr_DESeq_NOISeq.png" width=500 height=500 />
 
 
-###Compare NOISeq and DEGseq
-```{r}
-x <- vennGen("DEGseq", up.sr.deg, dn.sr.deg, "GeneNames", "NOISeq", up.sr.noi.df, dn.sr.noi.df, "id")
-venn.diagram(x, "sr_NOISeq_DEGseq.png", imagetype = "png", fill = brewer.pal(4, "BuGn"))
+# Expression Level of Individual Genes/Sequences
 
-x <- vennGen("DEGseq", up.sen.deg, dn.sen.deg, "GeneNames", "NOISeq", up.sen.noi.df, dn.sen.noi.df, "id")
-venn.diagram(x, "sen_NOISeq_DEGseq.png", imagetype = "png", fill = brewer.pal(4, "OrRd"))
+```{r IndividualGeneExpression, message = FALSE, fig.width = 10, fig.height = 4, warnings = FALSE}
+library(bear)
+#c6 <- c6.container
+plotGenes <- function(x, data, dataset = "", groups){
+    values <- data[data$hgnc_symbol == x, ]
+    dataset <- ifelse(nchar(dataset) == 0, dataset, paste(" from ", dataset))
+    if(nrow(values) == 0){
+        print(paste("No data found for ", x))
+    }
+    else{
+        cols <- grep("sr|sen|rej", colnames(values), perl = TRUE)
+        
+        values <- as.numeric(unlist(values)[cols])
+        values.df <- data.frame(values, groups)
+        sum.var <- summarySE(values.df, measurevar = "values", groupvars = "groups")
+        
+        g <- ggplot(sum.var, aes(x = factor(groups), y = values, fill = groups)) +
+            geom_bar(stat = "identity") +
+            geom_errorbar(aes(ymin = values - se, ymax = values + se),
+                          size = 0.2,
+                          width = 0.2) +
+            scale_fill_manual(values = c6) +
+            labs(title = paste(x, dataset), x = "", y = "Counts") + 
+        theme_bw() +
+        theme(panel.grid.major = element_blank(), 
+              legend.position = "none",
+              axis.text.x = element_text(angle = 45, hjust = 1))
+        return(g)
+    }
+}
 
-x <- vennGen("DEGseq", up.untr.deg, dn.untr.deg, "GeneNames", "NOISeq", up.untr.noi.df, dn.untr.noi.df, "id")
-venn.diagram(x, "untr_NOISeq_DEGseq.png", imagetype = "png", fill = brewer.pal(4, "BuPu"))
+
+
+multiplot <- function(..., plotlist = NULL, file, cols = 1, layout = NULL) {
+      require(grid)
+    
+      plots <- c(list(...), plotlist)
+    
+      numPlots = length(plots)
+    
+      if (is.null(layout)) {
+        layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                        ncol = cols, nrow = ceiling(numPlots/cols))
+      }
+    
+      if (numPlots == 1) {
+        print(plots[[1]])
+    
+      } else {
+        grid.newpage()
+        pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+        for (i in 1:numPlots) {
+          matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+    
+          print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                          layout.pos.col = matchidx$col))
+        }
+      }
+}
+
+old.hk <- c("GAPDH", "RPL13A", "ACTB")
+new.hk <- c("C1orf43", "CHMP2A", "EMC7", "GPI", "PSMB2", "RAB7A", "REEP5", "SNRPD3", "VCP")
+others <- c("SMARCA5","HOXA1","H2AFY")
+ercc.genes <- c("ERCC-00002", "ERCC-00003", "ERCC-00004")
+
+datasets <- list(counts.df, tmm.df, deseq.df, loess.df)
+setnames <- c("Raw", "TMM", "DESeq", "LOESS")
+names(datasets) <- setnames
+
+plotMore <- function(datasets, setnames, genes){
+    res <- lapply(genes, plotGenes, datasets, setnames, groups = groups)
+    multiplot(plotlist = res, cols = 3 )
+}
+
+
+Map(plotMore, datasets, setnames, rep(list(old.hk), length(datasets)))
+Map(plotMore, datasets, setnames, rep(list(ercc.genes), length(datasets)))
+Map(plotMore, datasets, setnames, rep(list(others), length(datasets)))
 ```
 
-####SR NOISeq vs. SR DEGseq
-
-<img src="sr_NOISeq_DEGseq.png" width=500 height=500 />
-
-####SEN NOISeq vs. SEN DEGseq
-
-<img src="sen_NOISeq_DEGseq.png" width=500 height=500 />
-
-####Untreated NOISeq vs. Untreated DEGseq
-
-<img src="untr_NOISeq_DEGseq.png" width=500 height=500 />
-
+```{r plotNewHK, message = FALSE, warning = FALSE, fig.height = 10, fig.width = 14}
+Map(plotMore, datasets, setnames, rep(list(new.hk), length(datasets)))
+```
 
 [img01]:Kazak_Overall_experimental_design.jpg
-
-
-
-
-
 
 [001]:http://www.lifetechnologies.com/order/catalog/product/4456740
