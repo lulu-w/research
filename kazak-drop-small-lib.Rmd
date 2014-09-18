@@ -279,6 +279,10 @@ dge <- dge[keep, ]
 
 plotDistribution(dge$counts, "Distribution of Filtered Counts")
 
+#pdf("distribution.DropSmall.pdf", height = 10, width = 10)
+#plotDistribution(dge$counts, "Distribution of Filtered Counts")
+#dev.off()
+
 counts.df <- data.frame(dge$counts, dge$genes)
 ```
 
@@ -288,7 +292,7 @@ After filtering, **`r length(keep)`** transcripts were kept for downstream analy
 Since different RefSeq transcripts for the same gene symbol shares most of their reads, therefore, among the **`r nrow(counts.df)`** transcripts, the transcript with highest overall count for each gene symbol were used for that particular gene symbol. 
 
 ```{r getGeneExpression}
-o <- order(rowSums(dge$counts))
+o <- order(rowSums(dge$counts), decreasing = TRUE)
 dge <- dge[o, ]
 dge <- dge[! duplicated(dge$genes$hgnc_symbol), ]
 
@@ -335,6 +339,10 @@ library(ggplot2)
 
 plotDistribution(tmm, "TMM Normalized Gene Expression")
 plotDistribution(tmm[grep("ERCC-", dge$genes$id), ], "TMM Normalized ERCC Sequences")
+
+pdf("Normalized.drop.pdf", height = 10, width = 10)
+plotDistribution(tmm, "TMM Normalized Gene Expression")
+dev.off()
 
 tmm.df <- data.frame(tmm, dge$genes)
 ```
@@ -489,6 +497,7 @@ heatmap.2(zmat, col = hmcol, trace = "none", margin = c(10, 6))
 ### SR_treated vs. SR_untreated
 
 ```{r DEanalysis, cache = TRUE}
+
 res = nbinomTest( cds, "sr_untreated", "sr_treated")
 ```
 
@@ -519,6 +528,7 @@ In total, there are **`r nrow(up.sr.des)+nrow(dn.sr.des)`** statistically signif
 ### SEN_treated vs. SEN_untreated
 
 ```{r DEsen, cache = TRUE}
+
 res = nbinomTest( cds, "sen_untreated", "sen_treated")
 ```
 
@@ -540,6 +550,7 @@ In total, there are **`r nrow(up.sen.des)+nrow(dn.sen.des)`** statistically sign
 ### SEN_untreated vs. SR_untreated
 
 ```{r DEsenSR, cache = TRUE}
+
 res = nbinomTest( cds, "sr_untreated", "sen_untreated")
 ```
 
@@ -642,14 +653,43 @@ vennGen <- function(up.des, dn.des, up.edge, dn.edge){
 }
 
 x <- vennGen(up.sr.des, dn.sr.des, up.sr.edge, dn.sr.edge)
-venn.diagram(x, "sr_DESeq_edgeR.tiff", fill = brewer.pal(4, "BuGn"))
+venn.diagram(x, "sr_DESeq_edgeR.png", imagetype = "png", fill = brewer.pal(4, "BuGn"))
 
 x <- vennGen(up.sen.des, dn.sen.des, up.sen.edge, dn.sen.edge)
-venn.diagram(x, "sen_DESeq_edgeR.tiff", fill = brewer.pal(4, "OrRd"))
+venn.diagram(x, "sen_DESeq_edgeR.png", imagetype = "png", fill = brewer.pal(4, "OrRd"))
 
 x <- vennGen(up.untr.des, dn.untr.des, up.untr.edge, dn.untr.edge)
-venn.diagram(x, "Untr_DESeq_edgeR.tiff", fill = brewer.pal(4, "BuPu"))
+venn.diagram(x, "Untr_DESeq_edgeR.png", imagetype = "png", fill = brewer.pal(4, "BuPu"))
 ```
+
+
+### Validate Known DE Genes for DESeq and edgR
+
+<!--
+vdeg = c("GAPDH", "ACTB", "RPL13A", "C1orf43", "CHMP2A","EMC7", "SMARCA5", "HOXA1", "H2AFY", "IL2RA", "IL2RB", "IL2RG", "STAT5A", "STAT5B")
+names(vdeg) = c("GAPDH", "ACTB", "RPL13A", "C1orf43", "CHMP2A","EMC7", "SMARCA5", "HOXA1", "H2AFY", "IL2RA", "IL2RB", "IL2RG", "STAT5A", "STAT5B")
+
+vdegid = c("NM_000417", "NM_000878", "NM_000206")
+
+delist <- list(up.sr.des = up.sr.des$hgnc_symbol, 
+               dn.sr.des = dn.sr.des$hgnc_symbol,
+               up.sr.edge = up.sr.edge$, 
+               dn.sr.edge = dn.sr.edge$, 
+               up.sen.des = up.sen.des$hgnc_symbol, 
+               dn.sen.des = dn.sen.des$hgnc_symbol,
+               up.sen.edge = up.sen.edge$, 
+               dn.sen.edge = dn.sen.edge$, 
+               up.untr.des = up.untr.des$hgnc_symbol, 
+               dn.untr.des = dn.untr.des$hgnc_symbol,
+               up.untr.edge = up.untr.edge$, 
+               dn.untr.edge = dn.untr.edge$, 
+               counts.df = counts.df$hgnc_symbol)
+
+
+res <- lapply(delist, function(x) unlist(lapply(vdeg, grep, x)))
+
+
+--->
 
 
 
@@ -738,6 +778,21 @@ Map(plotMore, datasets, setnames, rep(list(others), length(datasets)))
 
 ```{r plotNewHK, message = FALSE, warning = FALSE, fig.height = 10, fig.width = 14}
 Map(plotMore, datasets, setnames, rep(list(new.hk), length(datasets)))
+```
+
+# Downloadable/Output Files
+
+## DE Genes from DESeq
+
+```{r}
+write.csv(up.sr.des, "up.sr_tr.DESeq.drop.csv", quote = FALSE)
+write.csv(dn.sr.des, "dn.sr_tr.DESeq.drop.csv", quote = FALSE)
+
+write.csv(up.sen.des, "up.sen_tr.DESeq.drop.csv", quote = FALSE)
+write.csv(dn.sen.des, "dn.sen_tr.DESeq.drop.csv", quote = FALSE)
+
+write.csv(up.untr.des, "up.untr_sen.DESeq.drop.csv", quote = FALSE)
+write.csv(dn.untr.des, "dn.untr_sen.DESeq.drop.csv", quote = FALSE)
 ```
 
 [img01]:Kazak_Overall_experimental_design.jpg

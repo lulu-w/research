@@ -221,6 +221,7 @@ head(ercc.df, 2)
 ```{r RefSeq2HGNC_symbol, cache = TRUE}
 library(biomaRt)
 
+
 pcg <- grep("NM_", counts.df$id)
 nc <- grep("NR_", counts.df$id)
 
@@ -307,7 +308,7 @@ After filtering, **`r sum(keep)`** transcripts were kept for downstream analysis
 Since different RefSeq transcripts for the same gene symbol shares most of their reads, therefore, among the **`r nrow(counts.df)`** transcripts, the transcript with highest overall count for each gene symbol were used for that particular gene symbol. 
 
 ```{r getGeneExpression}
-o <- order(rowSums(dge$counts))
+o <- order(rowSums(dge$counts), decreasing = TRUE)
 dge <- dge[o, ]
 dge <- dge[! duplicated(dge$genes$hgnc_symbol), ]
 
@@ -327,7 +328,7 @@ $RPKM_{i,j} = \frac{exonReadsCount_{i,j}}{librarySize_{j} \times exonLength_{i} 
 All RPKM values for transcripts were stored in the matrix below:
 
 ```{r getRPKM}
-rpkms <- rpkm(dge, gene.length = dge$genes$length, normalized.lib.sizes = FALSE)
+rpkms <- edgeR::rpkm(dge, gene.length = dge$genes$length, normalized.lib.sizes = FALSE)
 rownames(rpkms) <- dge$genes$id
 ```
 
@@ -353,6 +354,7 @@ library(reshape)
 library(ggplot2)
 
 plotDistribution(tmm, "TMM Normalized Gene Expression")
+
 plotDistribution(tmm[grep("ERCC-", dge$genes$id), ], "TMM Normalized ERCC Sequences")
 
 tmm.df <- data.frame(tmm, dge$genes)
@@ -504,6 +506,7 @@ heatmap.2(zmat, col = hmcol, trace = "none", margin = c(10, 6))
 ### SR_treated vs. SR_untreated
 
 ```{r DEanalysis, cache = TRUE}
+
 res = nbinomTest( cdsBlind, "sr_untreated", "sr_treated")
 ```
 
@@ -536,6 +539,7 @@ In total, there are **`r nrow(up.sr.des)+nrow(dn.sr.des)`** statistically signif
 ### SEN_treated vs. SEN_untreated
 
 ```{r DEsen, cache = TRUE}
+
 res = nbinomTest( cdsBlind, "sen_untreated", "sen_treated")
 ```
 
@@ -558,6 +562,7 @@ In total, there are **`r nrow(up.sen.des)+nrow(dn.sen.des)`** statistically sign
 ### SEN_untreated vs. SR_untreated
 
 ```{r DEsenSR, cache = TRUE}
+
 res = nbinomTest( cdsBlind, "sr_untreated", "sen_untreated")
 ```
 
@@ -577,12 +582,37 @@ head(dn.untr.des)
 
 In total, there are **`r nrow(up.untr.des)+nrow(dn.untr.des)`** statistically significant differentially expressed genes between **SEN_untreated and SR_untreated**. Among these genes, there are **`r nrow(up.untr.des)`** up-regulated and **`r nrow(dn.untr.des)`** in SEN untreated.
 
+### SEN_treated vs. SR_treated
+
+```{r DEtreat, cache = TRUE}
+
+res = nbinomTest( cdsBlind, "sr_treated", "sen_treated")
+```
+
+```{r plotDEtreat}
+plotMA(res)
+hist(res$padj, breaks = 100, col = "steelblue", main = "", xlab = "Adjusted p-value")
+abline(v=0.05, col = "red", lty = 2)
+
+res <- getDEset(res, 0.05)
+
+up.tr.des <- res[[1]]
+dn.tr.des <- res[[2]]
+
+head(up.tr.des)
+head(dn.tr.des)
+```
+
+In total, there are **`r nrow(up.tr.des)+nrow(dn.tr.des)`** statistically significant differentially expressed genes between **SEN_treated and SR_untreated**. Among these genes, there are **`r nrow(up.tr.des)`** up-regulated and **`r nrow(dn.tr.des)`** in SEN untreated.
+
 ## Calling Differential Expression with NOISeq
 
 ### SR_treated vs. SR_untreated
 
 ```{r NOISeqSR, message = FALSE, results = "hide", cache = TRUE}
 library(NOISeq)
+set.seed(12345)
+
 runNOI <- function(condition){
     facs <- groups[grep(condition, groups, perl = TRUE)]
     facs <- data.frame(Treatment = factor(facs), sampleRun = factor(facs))
@@ -612,6 +642,7 @@ dn.sr.noi.df <- data.frame(id = rownames(dn.sr.noi), dn.sr.noi)
 ### SEN_treated vs. SEN_untreated
 
 ```{r NOISeqSEN, results = "hide", cache = TRUE}
+
 res <- runNOI("sen")
 ```
 
@@ -632,6 +663,7 @@ dn.sen.noi.df <- data.frame(id = rownames(dn.sen.noi), dn.sen.noi)
 ### SEN_untreated vs. SR_untreated
 
 ```{r NOISeqUN, results = "hide", cache = TRUE}
+
 res <- runNOI("sen_untreated|sr_untreated")
 ```
 
@@ -649,6 +681,27 @@ up.untr.noi.df <- data.frame(id = rownames(up.untr.noi), up.untr.noi)
 dn.untr.noi.df <- data.frame(id = rownames(dn.untr.noi), dn.untr.noi)
 ```
 
+### SEN_treated vs. SR_treated
+
+```{r NOISeqTR, results = "hide", cache = TRUE}
+
+res <- runNOI("sen_treated|sr_treated")
+```
+
+```{r}
+library(NOISeq)
+
+DE.plot(res, q=q.cut, graphic="MD")
+prob_val <- res@results[[1]]$prob
+hist(prob_val, breaks = 100, col = "steelblue", main = "", xlab = "Probability of DE")
+abline(v = quantile(prob_val, q.cut, na.rm = TRUE), col = "red", lty = 2)
+
+up.tr.noi <- degenes(res, q=q.cut, M="down") #Up in SEN
+dn.tr.noi <- degenes(res, q=q.cut, M="up") #Down in SEN
+up.tr.noi.df <- data.frame(id = rownames(up.tr.noi), up.tr.noi)
+dn.tr.noi.df <- data.frame(id = rownames(dn.tr.noi), dn.tr.noi)
+```
+
 
 ## Calling Differential Expression with DEGSeq
 
@@ -657,7 +710,9 @@ dn.untr.noi.df <- data.frame(id = rownames(dn.untr.noi), dn.untr.noi)
 ```{r DEGSeqSR, results = "hide", cache = TRUE}
 library(DEGseq)
 
+
 runDEG <- function(cond1, cond2){
+    set.seed(12345)
     par(mfrow = c(3, 2), mar = rep(2, 4))
     gem1 = as.matrix(tmm.df[, c(grep("hgnc", colnames(tmm.df)), grep(cond1, colnames(tmm.df)))])
 
@@ -708,6 +763,7 @@ abline(v=0.05, col = "red", lty = 2)
 ### SEN_treated vs. SEN_untreated
 
 ```{r DEGSeqSEN, results = "hide", cache = TRUE}
+
 res <- runDEG("sen_treated", "sen_untreated")
 ```
 
@@ -728,11 +784,12 @@ abline(v=0.05, col = "red", lty = 2)
 ### SEN_untreated vs. SR_untreated
 
 ```{r DEGSeqUntr, cache = TRUE, results="hide"}
+
 res <- runDEG("sen_untreated", "sr_untreated")
 ```
 
 ```{r}
-pic <- getPath("sen_treated", "sen_untreated")
+pic <- getPath("sen_untreated", "sr_untreated")
 ```
 
 <img src="./`r pic`" />
@@ -741,6 +798,27 @@ pic <- getPath("sen_treated", "sen_untreated")
 res1 <- res[complete.cases(res), ]
 up.untr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change > 0, ]
 dn.untr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change < 0, ]
+hist(res1$q.value, breaks = 100, col = "steelblue", main = "", xlab = "Adjusted p-value")
+abline(v=0.05, col = "red", lty = 2)
+```
+
+### SEN_treated vs. SR_treated
+
+```{r DEGSeqTreat, cache = TRUE, results="hide"}
+
+res <- runDEG("sen_treated", "sr_treated")
+```
+
+```{r}
+pic <- getPath("sen_treated", "sr_treated")
+```
+
+<img src="./`r pic`" />
+
+```{r DEGSeqTreatRes}
+res1 <- res[complete.cases(res), ]
+up.tr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change > 0, ]
+dn.tr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change < 0, ]
 hist(res1$q.value, breaks = 100, col = "steelblue", main = "", xlab = "Adjusted p-value")
 abline(v=0.05, col = "red", lty = 2)
 ```
@@ -779,6 +857,10 @@ venn.diagram(x, "sen_DESeq_NOISeq.png", imagetype = "png", fill = brewer.pal(4, 
 
 x <- vennGen("DESeq", up.untr.des, dn.untr.des, "hgnc_symbol", "NOISeq", up.untr.noi.df, dn.untr.noi.df, "id")
 venn.diagram(x, "untr_DESeq_NOISeq.png", imagetype = "png", fill = brewer.pal(4, "BuPu"))
+
+x <- vennGen("DESeq", up.tr.des, dn.tr.des, "hgnc_symbol", "NOISeq", up.tr.noi.df, dn.tr.noi.df, "id")
+venn.diagram(x, "tr_DESeq_NOISeq.png", imagetype = "png", fill = brewer.pal(4, "Blues"))
+
 ```
 
 ####SR DESeq vs. SR NOISeq
@@ -793,6 +875,10 @@ venn.diagram(x, "untr_DESeq_NOISeq.png", imagetype = "png", fill = brewer.pal(4,
 
 <img src="untr_DESeq_NOISeq.png" width=500 height=500 />
 
+####Treated DESeq vs. Treated NOISeq
+
+<img src="tr_DESeq_NOISeq.png" width=500 height=500 />
+
 
 ###Compare NOISeq and DEGseq
 ```{r results = "hide"}
@@ -804,6 +890,9 @@ venn.diagram(x, "sen_NOISeq_DEGseq.png", imagetype = "png", fill = brewer.pal(4,
 
 x <- vennGen("DEGseq", up.untr.deg, dn.untr.deg, "GeneNames", "NOISeq", up.untr.noi.df, dn.untr.noi.df, "id")
 venn.diagram(x, "untr_NOISeq_DEGseq.png", imagetype = "png", fill = brewer.pal(4, "BuPu"))
+
+x <- vennGen("DEGseq", up.tr.deg, dn.tr.deg, "GeneNames", "NOISeq", up.tr.noi.df, dn.tr.noi.df, "id")
+venn.diagram(x, "tr_NOISeq_DEGseq.png", imagetype = "png", fill = brewer.pal(4, "Blues"))
 ```
 
 ####SR NOISeq vs. SR DEGseq
@@ -817,6 +906,83 @@ venn.diagram(x, "untr_NOISeq_DEGseq.png", imagetype = "png", fill = brewer.pal(4
 ####Untreated NOISeq vs. Untreated DEGseq
 
 <img src="untr_NOISeq_DEGseq.png" width=500 height=500 />
+
+####Treated NOISeq vs. Treated DEGseq
+
+<img src="tr_NOISeq_DEGseq.png" width=500 height=500 />
+
+
+### Validate Known DE Genes for DESeq, NOISeq and DEGseq
+
+```{r validateKownDEG}
+vdeg = c("GAPDH", "ACTB", "RPL13A", "C1orf43", "CHMP2A","EMC7", "SMARCA5", "HOXA1", "H2AFY", "IL2RA", "IL2RB", "IL2RG", "STAT5A", "STAT5B")
+names(vdeg) = c("GAPDH", "ACTB", "RPL13A", "C1orf43", "CHMP2A","EMC7", "SMARCA5", "HOXA1", "H2AFY", "IL2RA", "IL2RB", "IL2RG", "STAT5A", "STAT5B")
+
+vdegid = c("NM_000417", "NM_000878", "NM_000206")
+
+delist <- list(up.sr.des = up.sr.des$hgnc_symbol, 
+               dn.sr.des = dn.sr.des$hgnc_symbol,
+               up.sr.noi = rownames(up.sr.noi), 
+               dn.sr.noi = rownames(dn.sr.noi), 
+               up.sr.deg = up.sr.deg$GeneNames, 
+               dn.sr.deg = dn.sr.deg$GeneNames,
+               up.sen.des = up.sen.des$hgnc_symbol, 
+               dn.sen.des = dn.sen.des$hgnc_symbol,
+               up.sen.noi = rownames(up.sen.noi), 
+               dn.sen.noi = rownames(dn.sen.noi), 
+               up.sen.deg = up.sen.deg$GeneNames, 
+               dn.sen.deg = dn.sen.deg$GeneNames,
+               up.untr.des = up.untr.des$hgnc_symbol, 
+               dn.untr.des = dn.untr.des$hgnc_symbol,
+               up.untr.noi = rownames(up.untr.noi), 
+               dn.untr.noi = rownames(dn.untr.noi), 
+               up.untr.deg = up.untr.deg$GeneNames, 
+               dn.untr.deg = dn.untr.deg$GeneNames,
+               counts.df = counts.df$hgnc_symbol)
+
+
+res <- lapply(delist, function(x) unlist(lapply(vdeg, grep, x)))
+
+
+```
+
+# Downloadable Files
+
+## DE Genes from DESeq
+
+```{r}
+write.csv(up.sr.des, "up.sr_tr.DESeq.csv", quote = FALSE)
+write.csv(dn.sr.des, "dn.sr_tr.DESeq.csv", quote = FALSE)
+
+write.csv(up.sen.des, "up.sen_tr.DESeq.csv", quote = FALSE)
+write.csv(dn.sen.des, "dn.sen_tr.DESeq.csv", quote = FALSE)
+
+write.csv(up.untr.des, "up.untr_sen.DESeq.csv", quote = FALSE)
+write.csv(dn.untr.des, "dn.untr_sen.DESeq.csv", quote = FALSE)
+```
+
+### Compare DESeq Results from "Drop Small Libs" and "Combine Libs"
+
+
+up.sr.des.drop <- read.csv("up.sr_tr.DESeq.drop.csv", header = TRUE)
+dn.sr.des.drop <- read.csv("dn.sr_tr.DESeq.drop.csv", header = TRUE)
+
+up.sen.des.drop <- read.csv("up.sen_tr.DESeq.drop.csv", header = TRUE)
+dn.sen.des.drop <- read.csv("dn.sen_tr.DESeq.drop.csv", header = TRUE)
+
+up.untr.des.drop <- read.csv("up.untr_sen.DESeq.drop.csv", header = TRUE)
+dn.untr.des.drop <- read.csv("dn.untr_sen.DESeq.drop.csv", header = TRUE)
+
+x <- vennGen("Drop", up.sr.des.drop, dn.sr.des.drop, "hgnc_symbol", "Combine", up.sr.des, dn.sr.des, "hgnc_symbol")
+venn.diagram(x, "sr_Drop_vs_Combine.png", imagetype = "png", fill = brewer.pal(4, "BuGn"))
+
+x <- vennGen("Drop", up.sen.des.drop, dn.sen.des.drop, "hgnc_symbol", "Combine", up.sen.des, dn.sen.des, "hgnc_symbol")
+venn.diagram(x, "sen_Drop_vs_Combine.png", imagetype = "png", fill = brewer.pal(4, "OrRd"))
+
+x <- vennGen("Drop", up.untr.des.drop, dn.untr.des.drop, "hgnc_symbol", "Combine", up.untr.des, dn.untr.des, "hgnc_symbol")
+venn.diagram(x, "untr_Drop_vs_Combine.png", imagetype = "png", fill = brewer.pal(4, "BuPu"))
+
+
 
 
 

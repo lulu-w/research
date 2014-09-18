@@ -1,7 +1,0 @@
----
-title: "test"
-author: "lulu"
-output: html_document
----
-
-This is a  test R markdown file.
