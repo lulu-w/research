@@ -627,7 +627,7 @@ res <- runNOI("sr")
 
 ```{r message = FALSE}
 library(NOISeq)
-q.cut = 0.7
+q.cut = 0.95
 DE.plot(res, q=q.cut, graphic="MD")
 prob_val <- res@results[[1]]$prob
 hist(prob_val, breaks = 100, col = "steelblue", main = "", xlab = "Probability of DE")
@@ -932,6 +932,12 @@ delist <- list(up.sr.des = up.sr.des$hgnc_symbol,
                dn.sen.noi = rownames(dn.sen.noi), 
                up.sen.deg = up.sen.deg$GeneNames, 
                dn.sen.deg = dn.sen.deg$GeneNames,
+               up.tr.des = up.tr.des$hgnc_symbol, 
+               dn.tr.des = dn.tr.des$hgnc_symbol,
+               up.tr.noi = rownames(up.tr.noi), 
+               dn.tr.noi = rownames(dn.tr.noi), 
+               up.tr.deg = up.tr.deg$GeneNames, 
+               dn.tr.deg = dn.tr.deg$GeneNames,
                up.untr.des = up.untr.des$hgnc_symbol, 
                dn.untr.des = dn.untr.des$hgnc_symbol,
                up.untr.noi = rownames(up.untr.noi), 
@@ -946,6 +952,93 @@ res <- lapply(delist, function(x) unlist(lapply(vdeg, grep, x)))
 
 ```
 
+# Expression Level of Individual Genes/Sequences
+
+```{r IndividualGeneExpression, message = FALSE, fig.width = 10, fig.height = 4, warnings = FALSE}
+library(bear)
+#c6 <- c6.container
+plotGenes <- function(x, data, dataset = "", groups){
+    values <- data[data$hgnc_symbol == x, ]
+    dataset <- ifelse(nchar(dataset) == 0, dataset, paste(" from ", dataset))
+    if(nrow(values) == 0){
+        print(paste("No data found for ", x))
+    }
+    else{
+        cols <- grep("sr|sen|rej", colnames(values), perl = TRUE)
+        
+        values <- as.numeric(unlist(values)[cols])
+        values.df <- data.frame(values, groups)
+        sum.var <- summarySE(values.df, measurevar = "values", groupvars = "groups")
+        
+        g <- ggplot(sum.var, aes(x = factor(groups), y = values, fill = groups)) +
+            geom_bar(stat = "identity") +
+            geom_errorbar(aes(ymin = values - se, ymax = values + se),
+                          size = 0.2,
+                          width = 0.2) +
+            scale_fill_manual(values = c6) +
+            labs(title = paste(x, dataset), x = "", y = "Counts") + 
+        theme_bw() +
+        theme(panel.grid.major = element_blank(), 
+              legend.position = "none",
+              axis.text.x = element_text(angle = 45, hjust = 1))
+        return(g)
+    }
+}
+
+
+
+multiplot <- function(..., plotlist = NULL, file, cols = 1, layout = NULL) {
+      require(grid)
+    
+      plots <- c(list(...), plotlist)
+    
+      numPlots = length(plots)
+    
+      if (is.null(layout)) {
+        layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                        ncol = cols, nrow = ceiling(numPlots/cols))
+      }
+    
+      if (numPlots == 1) {
+        print(plots[[1]])
+    
+      } else {
+        grid.newpage()
+        pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+        for (i in 1:numPlots) {
+          matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+    
+          print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                          layout.pos.col = matchidx$col))
+        }
+      }
+}
+
+old.hk <- c("GAPDH", "RPL13A", "ACTB")
+new.hk <- c("C1orf43", "CHMP2A", "EMC7")
+others <- c("SMARCA5","HOXA1","H2AFY", "STAT5A", "STAT5B")
+
+datasets <- list(counts.df, tmm.df)
+setnames <- c("Raw", "TMM")
+names(datasets) <- setnames
+
+plotMore <- function(datasets, setnames, genes){
+    res <- lapply(genes, plotGenes, datasets, setnames, groups = groups)
+    multiplot(plotlist = res, cols = 3 )
+}
+
+
+Map(plotMore, datasets, setnames, rep(list(old.hk), length(datasets)))
+
+Map(plotMore, datasets, setnames, rep(list(others), length(datasets)))
+```
+
+```{r plotNewHK, message = FALSE, warning = FALSE, fig.height = 10, fig.width = 14}
+Map(plotMore, datasets, setnames, rep(list(new.hk), length(datasets)))
+```
+
+
 # Downloadable Files
 
 ## DE Genes from DESeq
@@ -959,11 +1052,14 @@ write.csv(dn.sen.des, "dn.sen_tr.DESeq.csv", quote = FALSE)
 
 write.csv(up.untr.des, "up.untr_sen.DESeq.csv", quote = FALSE)
 write.csv(dn.untr.des, "dn.untr_sen.DESeq.csv", quote = FALSE)
+
+write.csv(up.tr.des, "up.tr_sen.DESeq.csv", quote = FALSE)
+write.csv(dn.tr.des, "dn.tr_sen.DESeq.csv", quote = FALSE)
 ```
 
 ### Compare DESeq Results from "Drop Small Libs" and "Combine Libs"
 
-
+```{r}
 up.sr.des.drop <- read.csv("up.sr_tr.DESeq.drop.csv", header = TRUE)
 dn.sr.des.drop <- read.csv("dn.sr_tr.DESeq.drop.csv", header = TRUE)
 
@@ -972,6 +1068,9 @@ dn.sen.des.drop <- read.csv("dn.sen_tr.DESeq.drop.csv", header = TRUE)
 
 up.untr.des.drop <- read.csv("up.untr_sen.DESeq.drop.csv", header = TRUE)
 dn.untr.des.drop <- read.csv("dn.untr_sen.DESeq.drop.csv", header = TRUE)
+
+up.tr.des.drop <- read.csv("up.tr_sen.DESeq.drop.csv", header = TRUE)
+dn.tr.des.drop <- read.csv("dn.tr_sen.DESeq.drop.csv", header = TRUE)
 
 x <- vennGen("Drop", up.sr.des.drop, dn.sr.des.drop, "hgnc_symbol", "Combine", up.sr.des, dn.sr.des, "hgnc_symbol")
 venn.diagram(x, "sr_Drop_vs_Combine.png", imagetype = "png", fill = brewer.pal(4, "BuGn"))
@@ -982,6 +1081,9 @@ venn.diagram(x, "sen_Drop_vs_Combine.png", imagetype = "png", fill = brewer.pal(
 x <- vennGen("Drop", up.untr.des.drop, dn.untr.des.drop, "hgnc_symbol", "Combine", up.untr.des, dn.untr.des, "hgnc_symbol")
 venn.diagram(x, "untr_Drop_vs_Combine.png", imagetype = "png", fill = brewer.pal(4, "BuPu"))
 
+x <- vennGen("Drop", up.tr.des.drop, dn.tr.des.drop, "hgnc_symbol", "Combine", up.tr.des, dn.tr.des, "hgnc_symbol")
+venn.diagram(x, "tr_Drop_vs_Combine.png", imagetype = "png", fill = brewer.pal(4, "Blues"))
+```
 
 
 
