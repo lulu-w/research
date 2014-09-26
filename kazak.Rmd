@@ -346,6 +346,10 @@ plotDistribution(rpkms[grep("ERCC-", dge$genes$id), ], "RPKM Normalized ERCC Seq
 
 ```{r TMM}
 dge <- calcNormFactors(dge)
+dge$samples
+tmm.multiplier = 1000000/dge$sample$lib.size/dge$sample$norm.factors
+names(tmm.multiplier) = rownames(dge$samples)
+tmm.multiplier
 tmm <- cpm(dge, normalized.lib.sizes = TRUE)
 ```
 
@@ -739,6 +743,7 @@ runDEG <- function(cond1, cond2){
     return(res)
 }
 
+
 res <- runDEG("sr_treated", "sr_untreated")
 ```
 
@@ -765,6 +770,7 @@ abline(v=0.05, col = "red", lty = 2)
 
 ```{r DEGSeqSEN, results = "hide", cache = TRUE}
 
+
 res <- runDEG("sen_treated", "sen_untreated")
 ```
 
@@ -786,6 +792,7 @@ abline(v=0.05, col = "red", lty = 2)
 
 ```{r DEGSeqUntr, cache = TRUE, results="hide"}
 
+
 res <- runDEG("sen_untreated", "sr_untreated")
 ```
 
@@ -806,6 +813,7 @@ abline(v=0.05, col = "red", lty = 2)
 ### SEN_treated vs. SR_treated
 
 ```{r DEGSeqTreat, cache = TRUE, results="hide"}
+
 
 res <- runDEG("sen_treated", "sr_treated")
 ```
@@ -1039,8 +1047,9 @@ Map(plotMore, datasets, setnames, rep(list(others), length(datasets)))
 ```
 
 
+# Final Results
 
-# Downloadable Files
+## Downloadable Files
 
 <!--
 
@@ -1062,7 +1071,7 @@ write.csv(dn.tr.des, "dn.tr_sen.DESeq.csv", quote = FALSE)
 
 ### Compare DESeq Results from "Drop Small Libs" and "Combine Libs"
 
-```{r}
+
 up.sr.des.drop <- read.csv("up.sr_tr.DESeq.drop.csv", header = TRUE)
 dn.sr.des.drop <- read.csv("dn.sr_tr.DESeq.drop.csv", header = TRUE)
 
@@ -1086,21 +1095,39 @@ venn.diagram(x, "untr_Drop_vs_Combine.png", imagetype = "png", fill = brewer.pal
 
 x <- vennGen("Drop", up.tr.des.drop, dn.tr.des.drop, "hgnc_symbol", "Combine", up.tr.des, dn.tr.des, "hgnc_symbol")
 venn.diagram(x, "tr_Drop_vs_Combine.png", imagetype = "png", fill = brewer.pal(4, "Blues"))
-```
+
 
 -->
 
 
 [Differentially Expressed Protein-coding Genes from GFOLD][f001]
 
+## Visualzation in UCSC Genome Browser
 
-# Meeting Notes
+Tracks are prepared to be be loaded to UCSC Genome Browser for visualization. Click [here][linkout] to browse.
+
+colors in the plots `r c6`
+
+colors in the tracks:
+
+```{r}
+library(grDevices)
+tc6 = brewer.pal(6, "Pastel1")
+
+#tc6 <- tc6[c(5, 1, 4, 8, 7, 11)]
+
+col2rgb(tc6)
+```
+
+## Meeting Notes
 
 [20140523][002]
 
 [20140606][003]
 
 [20140828][004]
+
+[20140918][005]
 
 
 [img01]:Kazak_Overall_experimental_design.jpg
@@ -1111,3 +1138,6 @@ venn.diagram(x, "tr_Drop_vs_Combine.png", imagetype = "png", fill = brewer.pal(4
 [002]:./slides/20140523.Overall_analytical_design.pdf
 [003]:./slides/20140606.ERCC.pdf
 [004]:./slides/20140828.Normalization_of_kazak_RNA-seq_data.pdf
+[005]:./slides/20140918.Comapring_DE_Methods.pdf
+
+[linkout]:http://genome.ucsc.edu/cgi-bin/hgTracks?db=hg19&hubUrl=http://jordan.biology.gatech.edu/lulu/trackHub/hub.txt
