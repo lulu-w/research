@@ -1,0 +1,564 @@
+```{r echo=FALSE}
+library(knitr)
+opts_chunk$set(echo=FALSE)
+```
+
+---
+title: "IL-2 Influences of the Transcriptional Activity in Human MSC"
+author: "Lu Wang"
+date: "Monday, July 21, 2014"
+output: html_document
+---
+## Experimental Design
+
+![Experimental Design][img01]
+
+## Libraries and Raw Data
+
+In this analysis, we started with `.bam` files containing RNA-seq reads aligned to hg19. The first metadata file is the `libs` file which contains the name and total mapped reads of all libraries.
+
+```{r cache=TRUE}
+libs <- read.delim("./kazak_data/tmap_lib_size.tsv", header=TRUE,sep="\t")
+```
+
+```{r colors}
+library(RColorBrewer)
+c6 <- brewer.pal(6, "Paired")
+c6 <- c6[c(2, 1, 6, 5, 4, 3)]
+
+pal1 <- colorRampPalette(c6[1:2])
+pal2 <- colorRampPalette(c6[3:4])
+pal3 <- colorRampPalette(c6[5:6])
+
+c15 <- c(pal1(7)[c(1:2, 5:7)], pal2(6)[c(1:2, 5:6)], pal3(8)[c(1:3, 6:8)])
+```
+
+In this data set, we have **`r nrow(libs)`** sequencing runs that correspond to **six** different RNA libraries/conditions:
+
+1. SR
+2. SR with IL-2 treatment
+3. SEN
+4. SEN with IL-2 treatment
+5. REJ
+6. REJ with IL-2 treatment
+
+Each file contains mapped reads were pooled together, compared against RefSeq gene model(`RefSeq.bed` file downloaded from UCSC genome browser) and generated a counts matrix using `bedtools`. 
+
+## Distribution of Raw Counts
+
+The raw counts for each transcript is calculated by couting the number of reads overlapped with the **exons** of both protein-coding and non-coding **RefSeq transcripts**.
+
+```{r readCountsMatrix, cache=TRUE}
+tb <- read.table("./kazak_data/counts_matrix.txt",header=FALSE)
+counts <- as.matrix(tb[,2:16])
+rownames(counts) <- tb[,1]
+rm(tb)
+colnames(counts) <- rownames(libs)
+counts <- counts[order(rownames(counts)),]
+head(counts, n=2)
+```
+
+
+```{r CountsDensity}
+library(reshape)
+library(ggplot2)
+
+plotDistribution <- function(data, title = ""){
+    par(mar=c(8.1,6.1,4.1,2.1))
+    par(las=2)
+    boxplot(log2(data.frame(data)), col = c15, names = (colnames(data)), main = paste(title))
+    data.df <- data.frame(id = rownames(data), data, stringsAsFactors = FALSE)
+    mdf <- melt(data.df, id = "id", variable_name = "condition")
+
+    ggplot(mdf, aes(log2(value))) +
+        geom_density(aes(color = condition)) + 
+        title(main = paste(title), xlab = "") + 
+        scale_colour_manual(values = c15) +
+        theme_bw() +
+        theme(panel.grid.major = element_blank())
+}
+
+plotDistribution(counts+1, "Distribution of Read Counts")
+```
+
+In this analysis, **technical replicates for each condition were combined** to increase the total signal. We started with **`r nrow(counts)`** RefSeq transcript annotations.
+
+```{r filterLibs, fig.width = 6}
+c15 <- c6
+sr_tr = grep("sr_treated", colnames(counts))
+sr_un = grep("sr_untreated", colnames(counts))
+sen_tr = grep("sen_treated", colnames(counts))
+sen_un = grep("sen_untreated", colnames(counts))
+rej_tr = grep("rej_treated", colnames(counts))
+rej_un = grep("rej_untreated", colnames(counts))
+
+
+counts <- data.frame( sr_treated = apply(counts[, sr_tr], 1, sum),
+                      sr_untreated = apply(counts[, sr_un], 1, sum),
+                      sen_treated = apply(counts[, sen_tr], 1, sum),
+                      sen_untreated = apply(counts[, sen_un], 1, sum),
+                      rej_treated = apply(counts[, rej_tr], 1, sum),
+                      rej_untreated = apply(counts[, rej_un], 1, sum))
+head(counts, 2)
+plotDistribution(counts+1, "Distribution of Read Counts")
+```
+
+## ERCC Counts
+
+The ERCC counts for each library were downloaded from the **Ion Proton** server with the help from James. The distribution of ERCC counts is shown below:
+
+```{r readERCC, fig.width = 6}
+ercc <- read.table("./kazak_data/ercc_counts.txt", header = TRUE)
+
+ercc <- data.frame( sr_treated = apply(ercc[, sr_tr], 1, sum),
+                    sr_untreated = apply(ercc[, sr_un], 1, sum),
+                    sen_treated = apply(ercc[, sen_tr], 1, sum),
+                    sen_untreated = apply(ercc[, sen_un], 1, sum),
+                    rej_treated = apply(ercc[, rej_tr], 1, sum),
+                    rej_untreated = apply(ercc[, rej_un], 1, sum))
+head(ercc, 2)
+
+plotDistribution(ercc+1, "Distribution of ERCC Counts")
+```
+
+In general, the distribution of **`r nrow(ercc)`**ERCC counts follows the trend of total read counts.
+
+## Determining Lower Limit of Detection
+
+The true counts of the ERCC sequences were obtaind from the `ERCC_Controls_Analysis.txt` file downloaded from [manufacturer's website][001]
+
+```{r downloadERCC, cache = TRUE}
+con = "http://tools.lifetechnologies.com/downloads/ERCC_Controls_Analysis.txt"
+true.ercc <- read.delim(con, header = TRUE)
+```
+
+The scatterplots below compared the observed ERCC counts versus the theoretical number of molecules from the manufacturer's documentation.
+
+```{r reformatERCC}
+true.ercc <- true.ercc[, c(2, 4)]
+true.ercc <- true.ercc[order(true.ercc$ERCC.ID), ]
+
+head(true.ercc)
+colnames(true.ercc) = c("ercc.id", "mix1.attmoles")
+```
+
+
+```{r obsERCCvsTrue, fig.height = 6, fig.width = 9}
+library(reshape)
+library(lattice)
+
+low.cut <- 3
+lib.cut <- 2
+
+ercc.df <- cbind(ercc.id = rownames(ercc), ercc, stringsAsFactors = FALSE)
+
+erccOvsE <- function(data, title = ""){
+    temp <- merge(data, true.ercc, by.x = colnames(data)[grep("id", colnames(data))], by.y = "ercc.id")
+    
+    mdf <- melt(temp[, c(1, grep("sr|sen|rej", colnames(temp)))], id = colnames(data)[grep("id", colnames(data))], variable_name = "sample")
+    
+    mdf <- cbind(mdf, expected = rep(temp$mix1.attmoles, ncol(ercc)))
+    
+    mdf$sample <- ordered(mdf$sample)
+    
+    xyplot( log2(value + 1) ~ log2(expected+1) | sample, data = mdf, 
+            layout = c(3,2), 
+            as.table = TRUE, 
+            pch = 20, 
+            col = rgb(70, 130, 180, 100, maxColorValue = 255), 
+            par.strip.text = list(cex = 0.7), 
+            xlim = c(0, 15),
+            ylim = c(0, 15),
+            xlab = expression(log[2]*"Expected Counts"), 
+            ylab = expression(log[2]*"Observed Counts"), 
+            main = paste(title), 
+            panel = function(x, y, ...) {
+                panel.xyplot(x, y, ...)
+                panel.abline(h = log2(low.cut+1), lty = 2)
+                panel.lmline(x, y, col.line = rgb(0,0,0,0.2))
+    })
+}
+erccOvsE(ercc.df, "ERCC Dose Response")
+```
+
+The **dashed line** in panels above shows the empirical cutoff for low read count sequences. The ERCC sequences with more than **`r low.cut`** counts in each library demonstrated linear relationship between the expected and observed read counts.
+
+```{r plotPairwiseCorr, fig.height = 9, fig.width = 12}
+plotPairs <- function(data, title = ""){
+    pairs(log2(data), col = rgb(0,0.5,1,0.2), pch = 16, main = paste(title))
+}
+```
+
+
+# Normalization
+
+```{r exonLengths, cache=TRUE}
+exon.lengths <- t(read.delim("./kazak_data/exon_lengths.tsv",header=TRUE,sep="\t"))
+```
+
+The exon length of each RefSeq transcripts were calculated using the `RefSeq.gtf` file downloaded from UCSC genome browser. 
+
+```{r getGeneLengths}
+counts.df <- data.frame(id = rownames(counts), counts, stringsAsFactors = FALSE)
+lengths.df <- data.frame(id = rownames(exon.lengths), exon.lengths)
+mdf <- merge(counts.df, lengths.df, by.x = "id", by.y = "id")
+counts.df <- mdf
+head(counts.df, 2)
+```
+
+For ERCC Spike-Ins, the lengths of the ERCC sequences were obtaind from the `ERCC92.gtf` file downloaded from [manufacturer's website][001]
+
+```{r getERCClength}
+tb <- read.table("http://tools.invitrogen.com/downloads/ERCC92.gtf", header = FALSE)
+tb <- tb[, c(1, 5)]
+colnames(tb) <- c("id", "length")
+mdf <- merge(ercc.df, tb, by.x = "ercc.id", by.y = "id" )
+ercc.df <- mdf
+head(ercc.df, 2)
+```
+
+
+```{r RefSeq2HGNC_symbol, cache = TRUE}
+library(biomaRt)
+
+
+pcg <- grep("NM_", counts.df$id)
+nc <- grep("NR_", counts.df$id)
+
+pcg.id <- counts.df$id[pcg]
+nc.id <- counts.df$id[nc]
+
+getSymbol <- function(ids, id.type, attributes){
+    ensembl = useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+    res <- getBM( attributes = c(paste(id.type), paste(attributes)), filters = id.type, values = ids, mart = ensembl )
+}
+
+
+res1 <- getSymbol(pcg.id, "refseq_mrna", attributes = "hgnc_symbol")
+res2 <- getSymbol(nc.id, "refseq_ncrna", attributes = "hgnc_symbol")
+```
+
+```{r cleanHGNC_symbol}
+cleanBiomartRes <- function(data, id.type, attribute){
+    # Remove nchar=0 empty results
+    data[, attribute] <- ifelse(nchar(data[, paste(attribute)]) == 0, NA, data[, attribute])
+    # Sort and remove duplicated id
+    data <- data[order(data[, id.type], data[, attribute]), ]
+    data <- data[!duplicated(data[, id.type]), ]
+}
+res1 <- cleanBiomartRes(res1, "refseq_mrna", "hgnc_symbol")
+res2 <- cleanBiomartRes(res2, "refseq_ncrna", "hgnc_symbol")
+```
+
+```{r assembleHGNC_symbol}
+#Assemble results for mRNA
+pcg <- merge(counts.df[pcg, ], res1, by.x = "id", by.y = "refseq_mrna", all.x = TRUE)
+
+fillMissingSymbol <- function(data){
+    data$hgnc_symbol <- ifelse(is.na(data$hgnc_symbol), data$id, data$hgnc_symbol)
+    return(data)
+}
+pcg <- fillMissingSymbol(pcg)
+#rm(res1)
+
+#Assemble results for ncRNA
+nc <- merge(counts.df[nc, ], res2, by.x = "id", by.y = "refseq_ncrna", all.x = TRUE)
+nc <- fillMissingSymbol(nc)
+#rm(res2)
+#Assemble mRNA and ncRNA
+counts.df <- rbind(pcg, nc)
+rm(pcg)
+rm(nc)
+
+ercc.df <- data.frame(ercc.df, hgnc_symbol = ercc.df$ercc.id, stringsAsFactors = FALSE)
+colnames(ercc.df) <- gsub("ercc.id", "id", colnames(ercc.df))
+colnames(counts.df) <- gsub("Length", "length", colnames(counts.df))
+counts.df <- rbind(ercc.df, counts.df)
+
+dataCols <- grep("sr|sen|rej", colnames(counts.df), perl = TRUE)
+annoCols <- grep("id|symbol|length", colnames(counts.df), perl = TRUE)
+
+groups <- colnames(counts.df)[dataCols]
+groups <- gsub("_[0-9]+", "", groups)
+groups <- factor(groups, levels = unique(groups))
+```
+
+```{r message = FALSE}
+library(edgeR)
+dge <- DGEList(counts = counts.df[, dataCols], group = groups, genes = counts.df[, annoCols])
+```
+
+## Filtering Low Expression Sequences
+
+
+```{r FilterCounts, fig.width = 6}
+#Filter Low Count Seqeunces
+#keep <- apply(dge$counts, 1, min) > 3
+keep <- rowSums(cpm(dge) > 1) >= 1
+dge <- dge[keep, ]
+
+plotDistribution(dge$counts, "Distribution of Filtered Counts")
+
+counts.df <- data.frame(dge$counts, dge$genes)
+```
+
+After filtering, **`r sum(keep)`** transcripts were kept for downstream analysis.
+
+## Expression of Genes
+Since different RefSeq transcripts for the same gene symbol shares most of their reads, therefore, among the **`r nrow(counts.df)`** transcripts, the transcript with highest overall count for each gene symbol were used for that particular gene symbol. 
+
+```{r getGeneExpression}
+o <- order(rowSums(dge$counts), decreasing = TRUE)
+dge <- dge[o, ]
+dge <- dge[! duplicated(dge$genes$hgnc_symbol), ]
+
+dge$samples$lib.size <- colSums(dge$counts)
+```
+
+## RPKM Normalization
+
+The **RPKM** calculation for each RefSeq transcript was calculated using the method from *Mortazavi et. al*. 
+
+For the *i* th transcript in library *j*, the RPKM is calculated as
+
+$RPKM_{i,j} = \frac{exonReadsCount_{i,j}}{librarySize_{j} \times exonLength_{i} \times 10^{-9}}$
+
+
+All RPKM values for transcripts were stored in the matrix below:
+
+```{r getRPKM}
+rpkms <- edgeR::rpkm(dge, gene.length = dge$genes$length, normalized.lib.sizes = FALSE)
+rownames(rpkms) <- dge$genes$id
+```
+
+
+```{r RpkmDensity, fig.width = 6}
+library(reshape)
+library(ggplot2)
+
+plotDistribution(rpkms, "Distribution of RPKM")
+plotDistribution(rpkms[grep("ERCC-", dge$genes$id), ], "RPKM Normalized ERCC Sequences")
+```
+
+
+## Normalize against beta-actin(ACTB)
+
+```{r}
+actb <- counts.df[counts.df$hgnc_symbol == "ACTB", ]
+actb.val <- unlist(actb[, grep("sr|sen|rej", colnames(actb), perl = TRUE)])
+actb.sc <- actb.val/mean(actb.val)
+```
+
+```{r}
+val <- grep("sr|sen|rej", colnames(counts.df), perl = TRUE)
+nonval <- grep("sr|sen|rej", colnames(counts.df), perl = TRUE, invert = TRUE)
+actb <- t(t(counts.df[, val])/actb.sc)
+actb.df <- data.frame(actb, counts.df[, nonval])
+```
+
+
+## ACTB + RPKM Normalization
+
+```{r}
+dge.actb <- DGEList(counts = actb, group = groups, genes = actb.df[, nonval])
+rpkms.actb <- edgeR::rpkm(dge.actb, gene.length = dge.actb$genes$length, normalized.lib.sizes = TRUE)
+rownames(rpkms.actb) <- dge.actb$genes$id
+```
+
+
+```{r fig.width = 6}
+library(reshape)
+library(ggplot2)
+
+plotDistribution(rpkms.actb, "Distribution of ACTB + RPKM")
+plotDistribution(rpkms.actb[grep("ERCC-", dge.actb$genes$id), ], "ACTB + RPKM Normalized ERCC Sequences")
+
+rpkms.actb.df <- data.frame(rpkms.actb, counts.df[, nonval])
+```
+
+# Calling Differential Expression with DEGseq
+
+### SR_treated vs. SR_untreated
+
+```{r DEGSeqSR, results = "hide", cache = TRUE}
+library(DEGseq)
+
+
+runDEG <- function(data, cond1, cond2){
+    set.seed(12345)
+    par(mfrow = c(3, 2), mar = rep(2, 4))
+    gem1 = as.matrix(rpkms.actb.df[, c(grep("hgnc", colnames(rpkms.actb.df)), grep(cond1, colnames(rpkms.actb.df)))])
+
+    gem2 = as.matrix(rpkms.actb.df[, c(grep("hgnc", colnames(rpkms.actb.df)), grep(cond2, colnames(rpkms.actb.df)))])
+    
+    outDir = paste(cond1,"_", cond2, sep = "")
+    DEGexp(geneExpMatrix1 = gem1, 
+           geneCol1 = 1, 
+           expCol1 = 2, 
+           groupLabel1 = cond1, 
+           geneExpMatrix2 = gem2, 
+           geneCol2 = 1, 
+           expCol2 = 2, 
+           groupLabel2 = cond2,
+           method = "MARS",
+           outputDir = outDir)
+    res <- read.delim(paste("./", outDir, "/output_score.txt", sep = ""),
+                      header = TRUE)
+    colnames(res) <- gsub("value1", cond1, colnames(res))
+    colnames(res) <- gsub("value2", cond2, colnames(res))
+    colnames(res) <- gsub("q.value.Benjamini.et.al..1995.", "q.value", colnames(res))
+    colnames(res) <- gsub("log2.Fold_change.", "log2.Fold_change", colnames(res))
+    return(res)
+}
+
+
+res <- runDEG(rpkms.actb.df, "sr_treated", "sr_untreated")
+```
+
+```{r}
+getPath <- function(cond1, cond2){
+    outDir = paste(cond1,"_", cond2, sep = "")
+    pic <- paste("./", outDir, "/output/result.png", sep = "")
+}
+
+pic <- getPath("sr_treated", "sr_untreated")
+```
+
+<img src="./`r pic`" />
+
+```{r DEGSeqSRres}
+res1 <- res[complete.cases(res), ]
+up.sr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change > 0, ]
+dn.sr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change < 0, ]
+hist(res1$q.value, breaks = 100, col = "steelblue", main = "", xlab = "Adjusted p-value")
+abline(v=0.05, col = "red", lty = 2)
+```
+
+### SEN_treated vs. SEN_untreated
+
+```{r DEGSeqSEN, results = "hide", cache = TRUE}
+res <- runDEG(rpkms.actb.df, "sen_treated", "sen_untreated")
+```
+
+```{r}
+pic <- getPath("sen_treated", "sen_untreated")
+```
+
+<img src="./`r pic`" />
+
+```{r DEGSeqSENres}
+res1 <- res[complete.cases(res), ]
+up.sen.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change > 0, ]
+dn.sen.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change < 0, ]
+hist(res1$q.value, breaks = 100, col = "steelblue", main = "", xlab = "Adjusted p-value")
+abline(v=0.05, col = "red", lty = 2)
+```
+
+# Expression Level of Individual Genes/Sequences
+
+```{r IndividualGeneExpression, message = FALSE, fig.width = 10, fig.height = 4, warnings = FALSE}
+library(bear)
+#c6 <- c6.container
+plotGenes <- function(x, data, dataset = "", groups){
+    values <- data[data$hgnc_symbol == x, ]
+    dataset <- ifelse(nchar(dataset) == 0, dataset, paste(" from ", dataset))
+    if(nrow(values) == 0){
+        print(paste("No data found for ", x))
+    }
+    else{
+        cols <- grep("sr|sen|rej", colnames(values), perl = TRUE)
+        
+        values <- as.numeric(unlist(values)[cols])
+        values.df <- data.frame(values, groups)
+        sum.var <- summarySE(values.df, measurevar = "values", groupvars = "groups")
+        
+        g <- ggplot(sum.var, aes(x = factor(groups), y = values, fill = groups)) +
+            geom_bar(stat = "identity") +
+            geom_errorbar(aes(ymin = values - se, ymax = values + se),
+                          size = 0.2,
+                          width = 0.2) +
+            scale_fill_manual(values = c6) +
+            labs(title = paste(x, dataset), x = "", y = "Counts") + 
+        theme_bw() +
+        theme(panel.grid.major = element_blank(), 
+              legend.position = "none",
+              axis.text.x = element_text(angle = 45, hjust = 1))
+        return(g)
+    }
+}
+
+
+
+multiplot <- function(..., plotlist = NULL, file, cols = 1, layout = NULL) {
+      require(grid)
+    
+      plots <- c(list(...), plotlist)
+    
+      numPlots = length(plots)
+    
+      if (is.null(layout)) {
+        layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                        ncol = cols, nrow = ceiling(numPlots/cols))
+      }
+    
+      if (numPlots == 1) {
+        print(plots[[1]])
+    
+      } else {
+        grid.newpage()
+        pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+        for (i in 1:numPlots) {
+          matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+    
+          print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                          layout.pos.col = matchidx$col))
+        }
+      }
+}
+
+old.hk <- c("GAPDH", "RPL13A", "ACTB")
+
+datasets <- list(counts.df, actb.df)
+setnames <- c("Raw", "ACTB nm.")
+names(datasets) <- setnames
+
+plotMore <- function(datasets, setnames, genes){
+    res <- lapply(genes, plotGenes, datasets, setnames, groups = groups)
+    multiplot(plotlist = res, cols = 3 )
+}
+
+
+```
+
+```{r message = FALSE, warning = FALSE, fig.height = 3, fig.wdith = 14}
+Map(plotMore, datasets, setnames, rep(list(old.hk), length(datasets)))
+```
+
+
+## Downloadable Files
+
+```{r}
+write.csv(actb.df, "actb.normalized.counts.csv", quote = FALSE, row.names = FALSE)
+
+write.csv(rpkms.actb.df, "actb.normalized.rpkms.csv", quote = FALSE, row.names = FALSE)
+```
+
+
+# Meeting Notes
+
+[20140523][002]
+
+[20140606][003]
+
+[20140828][004]
+
+
+[img01]:Kazak_Overall_experimental_design.jpg
+
+[f001]:./data/kazak.DE.pcg.GFOLD.xlsx
+
+[001]:http://www.lifetechnologies.com/order/catalog/product/4456740
+[002]:./slides/20140523.Overall_analytical_design.pdf
+[003]:./slides/20140606.ERCC.pdf
+[004]:./slides/20140828.Normalization_of_kazak_RNA-seq_data.pdf

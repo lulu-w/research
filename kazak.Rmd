@@ -1106,6 +1106,28 @@ venn.diagram(x, "tr_Drop_vs_Combine.png", imagetype = "png", fill = brewer.pal(4
 
 Tracks are prepared to be be loaded to UCSC Genome Browser for visualization. Click [here][linkout] to browse.
 
+**Description of Tracks**
+
+Short Label | Description | Track Type
+---- | ---- | ----
+Normalized | Normalized expression of SR treated, SR untreated, SEN treated, SEN untreated | Multiple Wiggle
+Raw | Raw/Not normalized expression of SR treated, SR untreated, SEN treated, SEN untreated | Multiple Wiggle
+SEN TreatedBam | Reads mapped to SEN treated | bam
+SEN TrScSingle | Normalized expression of SEN treated | Wiggle
+SEN TrSingle | Raw/Not normalized expression of SEN treated | Wiggle
+SEN UntreatedBam | Reads mapped to SEN untreated | bam
+SEN UntrScSingle | Normalized expression of SEN untreated | Wiggle
+SEN UntrSingle | Raw/Not normalized expression of SEN untreated | Wiggle
+SR TreatedBam | Reads mapped to SR treated | bam
+SR TrScSingle | Normalized expression of SR treated | Wiggle
+SR TrSingle | Raw/Not normalized expression of SR treated | Wiggle
+SR UntreatedBam | Reads mapped to SR untreated | bam
+SR UntrScSingle | Normalized expression of SR untreated | Wiggle
+SR UntrSingle | Raw/Not normalized expression of SR untreated | Wiggle
+
+
+####Color used
+
 colors in the plots `r c6`
 
 colors in the tracks:
