@@ -315,31 +315,6 @@ dge <- dge[! duplicated(dge$genes$hgnc_symbol), ]
 dge$samples$lib.size <- colSums(dge$counts)
 ```
 
-## RPKM Normalization
-
-The **RPKM** calculation for each RefSeq transcript was calculated using the method from *Mortazavi et. al*. 
-
-For the *i* th transcript in library *j*, the RPKM is calculated as
-
-$RPKM_{i,j} = \frac{exonReadsCount_{i,j}}{librarySize_{j} \times exonLength_{i} \times 10^{-9}}$
-
-
-All RPKM values for transcripts were stored in the matrix below:
-
-```{r getRPKM}
-rpkms <- edgeR::rpkm(dge, gene.length = dge$genes$length, normalized.lib.sizes = FALSE)
-rownames(rpkms) <- dge$genes$id
-```
-
-
-```{r RpkmDensity, fig.width = 6}
-library(reshape)
-library(ggplot2)
-
-plotDistribution(rpkms, "Distribution of RPKM")
-plotDistribution(rpkms[grep("ERCC-", dge$genes$id), ], "RPKM Normalized ERCC Sequences")
-```
-
 
 ## Normalize against beta-actin(ACTB)
 
@@ -356,102 +331,218 @@ actb <- t(t(counts.df[, val])/actb.sc)
 actb.df <- data.frame(actb, counts.df[, nonval])
 ```
 
-
-## ACTB + RPKM Normalization
-
-```{r}
-dge.actb <- DGEList(counts = actb, group = groups, genes = actb.df[, nonval])
-rpkms.actb <- edgeR::rpkm(dge.actb, gene.length = dge.actb$genes$length, normalized.lib.sizes = TRUE)
-rownames(rpkms.actb) <- dge.actb$genes$id
-```
-
-
-```{r fig.width = 6}
+```{r TMMDensity, fig.width = 6}
 library(reshape)
 library(ggplot2)
 
-plotDistribution(rpkms.actb, "Distribution of ACTB + RPKM")
-plotDistribution(rpkms.actb[grep("ERCC-", dge.actb$genes$id), ], "ACTB + RPKM Normalized ERCC Sequences")
+plotDistribution(actb, "ACTB Normalized Gene Expression")
 
-rpkms.actb.df <- data.frame(rpkms.actb, counts.df[, nonval])
+plotDistribution(actb[grep("ERCC-", actb.df$hgnc_symbol), ], "ACTB Normalized ERCC Sequences")
 ```
 
-# Calling Differential Expression with DEGseq
 
-### SR_treated vs. SR_untreated
+# Calling Differential Expression with GFOLD
 
-```{r DEGSeqSR, results = "hide", cache = TRUE}
-library(DEGseq)
+```{r cache = TRUE}
+remote.gfold = "http://jordan.biology.gatech.edu/lulu/data/kazak.DEgenes.normbyACTB.xlsx"
+dest.gfold = "./kazak_data/kazak.DEgenes.normbyACTB.xlsx"
+download.file(remote.gfold, dest.gfold, mode = "wb")
+##Manuall converted to csv due to large .xlsx file size
+sr.gfold = "./kazak_data/kazak.DEgenes.normbyACTB-sr.csv"
+sen.gfold = "./kazak_data/kazak.DEgenes.normbyACTB-sen.csv"
+```
 
+##SR treated vs SR untreated
 
-runDEG <- function(data, cond1, cond2){
-    set.seed(12345)
-    par(mfrow = c(3, 2), mar = rep(2, 4))
-    gem1 = as.matrix(rpkms.actb.df[, c(grep("hgnc", colnames(rpkms.actb.df)), grep(cond1, colnames(rpkms.actb.df)))])
-
-    gem2 = as.matrix(rpkms.actb.df[, c(grep("hgnc", colnames(rpkms.actb.df)), grep(cond2, colnames(rpkms.actb.df)))])
-    
-    outDir = paste(cond1,"_", cond2, sep = "")
-    DEGexp(geneExpMatrix1 = gem1, 
-           geneCol1 = 1, 
-           expCol1 = 2, 
-           groupLabel1 = cond1, 
-           geneExpMatrix2 = gem2, 
-           geneCol2 = 1, 
-           expCol2 = 2, 
-           groupLabel2 = cond2,
-           method = "MARS",
-           outputDir = outDir)
-    res <- read.delim(paste("./", outDir, "/output_score.txt", sep = ""),
-                      header = TRUE)
-    colnames(res) <- gsub("value1", cond1, colnames(res))
-    colnames(res) <- gsub("value2", cond2, colnames(res))
-    colnames(res) <- gsub("q.value.Benjamini.et.al..1995.", "q.value", colnames(res))
-    colnames(res) <- gsub("log2.Fold_change.", "log2.Fold_change", colnames(res))
-    return(res)
-}
-
-
-res <- runDEG(rpkms.actb.df, "sr_treated", "sr_untreated")
+```{r message = FALSE, cache = TRUE}
+sr.ws <- read.csv(sr.gfold, header = TRUE)
 ```
 
 ```{r}
-getPath <- function(cond1, cond2){
-    outDir = paste(cond1,"_", cond2, sep = "")
-    pic <- paste("./", outDir, "/output/result.png", sep = "")
+head(sr.ws)
+```
+
+```{r showGFOLD, eval = TRUE}
+library(ggplot2)
+library(reshape)
+
+showData <- function(data){
+    head(data)
+    df <- melt(data[, 3:4])
+    g <- qplot(df$variable, log2(df$value), data = df, geom = "boxplot", fill = df$variable, xlab = "", ylab = "log2 Counts")
+    print(g)
+    p <- qplot(log2(df$value), data = df, geom = "density", color = df$variable, xlab = "log2 Counts")
+    p
 }
 
-pic <- getPath("sr_treated", "sr_untreated")
+showData(sr.ws)
 ```
 
-<img src="./`r pic`" />
 
-```{r DEGSeqSRres}
-res1 <- res[complete.cases(res), ]
-up.sr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change > 0, ]
-dn.sr.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change < 0, ]
-hist(res1$q.value, breaks = 100, col = "steelblue", main = "", xlab = "Adjusted p-value")
-abline(v=0.05, col = "red", lty = 2)
-```
+##SEN treated vs SEN untreated
 
-### SEN_treated vs. SEN_untreated
-
-```{r DEGSeqSEN, results = "hide", cache = TRUE}
-res <- runDEG(rpkms.actb.df, "sen_treated", "sen_untreated")
+```{r message = FALSE, cache = TRUE}
+sen.ws <- read.csv(sen.gfold, header = TRUE)
 ```
 
 ```{r}
-pic <- getPath("sen_treated", "sen_untreated")
+head(sen.ws)
 ```
 
-<img src="./`r pic`" />
+```{r eval = TRUE}
+showData(sen.ws)
+```
 
-```{r DEGSeqSENres}
-res1 <- res[complete.cases(res), ]
-up.sen.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change > 0, ]
-dn.sen.deg <- res1[res1$q.value < 0.05 & res1$log2.Fold_change < 0, ]
-hist(res1$q.value, breaks = 100, col = "steelblue", main = "", xlab = "Adjusted p-value")
-abline(v=0.05, col = "red", lty = 2)
+## Hierachical Clustering
+
+```{r hclust}
+mdf <- merge(sr.ws, sen.ws, by.x = "RefSeq.ID", by.y = "RefSeq.ID")
+colnames(mdf) <- gsub("\\.x", "\\.sr", colnames(mdf))
+colnames(mdf) <- gsub("\\.y", "\\.sen", colnames(mdf))
+
+gfold.df <- mdf[, grep("Gene.Symbol.sen", colnames(mdf), invert = TRUE)]
+gfold.exprs <- grep("SR|SEN", colnames(gfold.df), perl = TRUE)
+
+
+gfold.up.union = (gfold.df$GFOLD.sr > 0.01 | gfold.df$GFOLD.sen > 0.01)
+gfold.up.sr = (gfold.df$GFOLD.sr > 0.01 & gfold.df$GFOLD.sen <= 0.01)
+gfold.up.sen = (gfold.df$GFOLD.sr <= 0.01 & gfold.df$GFOLD.sen > 0.01)
+gfold.up.intersect = (gfold.df$GFOLD.sr > 0.01 & gfold.df$GFOLD.sen > 0.01)
+
+
+gfold.dn.union = (gfold.df$GFOLD.sr < -0.01 | gfold.df$GFOLD.sen < -0.01)
+gfold.dn.sr = (gfold.df$GFOLD.sr < -0.01 & gfold.df$GFOLD.sen >= -0.01)
+gfold.dn.sen = (gfold.df$GFOLD.sr >= -0.01 & gfold.df$GFOLD.sen < -0.01)
+gfold.dn.intersect = (gfold.df$GFOLD.sr < -0.01 & gfold.df$GFOLD.sen < -0.01)
+```
+
+Hierarchical clustering was performed and heatmap was generated to visualize gene clusters. 8 heatmaps were generated for
+
+Set Name | Number of Gene
+---- | ----
+Union of up-regulated genes in SR treated and SEN treated | `r sum(gfold.up.union)`
+Genes up-regulated in SR treated only | `r sum(gfold.up.sr)`
+Genes up-regulated in SEN treated only | `r sum(gfold.up.sen)`
+Intersection of up-regulated genes in SR treated and SEN treated | `r sum(gfold.up.intersect)`
+Union of down-regulated genes in SR treated and SEN treated | `r sum(gfold.dn.union)`
+Genes down-regulated in SR treated only | `r sum(gfold.dn.sr)`
+Genes down-regulated in SEN treated only | `r sum(gfold.dn.sen)`
+Intersection of down-regulated genes in SR treated and SEN treated | `r sum(gfold.dn.intersect)`
+
+
+```{r plot8heatmap}
+ggheat = function(m, rescaling='none', clustering='none', labCol=T, labRow=T, border=FALSE, heatscale= c(low='blue',high='red')) {
+  ## the function can be be viewed as a two step process
+  ## 1. using the rehape package and other funcs the data is clustered, scaled, and reshaped
+  ## using simple options or by a user supplied function
+  ## 2. with the now resahped data the plot, the chosen labels and plot style are built
+ 
+  require(reshape)
+  require(ggplot2)
+ 
+  ## you can either scale by row or column not both! 
+  ## if you wish to scale by both or use a differen scale method then simply supply a scale
+  ## function instead NB scale is a base funct
+ 
+  if(is.function(rescaling))
+  { 
+    m=rescaling(m)
+  } 
+  else 
+  {
+    if(rescaling=='column') 
+      m=scale(m, center=T)
+    if(rescaling=='row') 
+      m=t(scale(t(m),center=T))
+  }
+ 
+  ## I have supplied the default cluster and euclidean distance- and chose to cluster after scaling
+  ## if you want a different distance/cluster method-- or to cluster and then scale
+  ## then you can supply a custom function 
+ 
+  if(is.function(clustering)) 
+  {
+    m=clustering(m)
+  }else
+  {
+  if(clustering=='row')
+    m=m[hclust(dist(m))$order, ]
+  if(clustering=='column')  
+    m=m[,hclust(dist(t(m)))$order]
+  if(clustering=='both')
+    m=m[hclust(dist(m))$order ,hclust(dist(t(m)))$order]
+  }
+  ## this is just reshaping into a ggplot format matrix and making a ggplot layer
+ 
+  rows=dim(m)[1]
+  cols=dim(m)[2]
+  melt.m=cbind(rowInd=rep(1:rows, times=cols), colInd=rep(1:cols, each=rows) ,melt(m))
+	g=ggplot(data=melt.m)
+ 
+  ## add the heat tiles with or without a white border for clarity
+ 
+  if(border==TRUE)
+    g2=g+geom_rect(aes(xmin=colInd-1,xmax=colInd,ymin=rowInd-1,ymax=rowInd, fill=value),colour='white')
+  if(border==FALSE)
+    g2=g+geom_rect(aes(xmin=colInd-1,xmax=colInd,ymin=rowInd-1,ymax=rowInd, fill=value))
+ 
+  ## add axis labels either supplied or from the colnames rownames of the matrix
+ 
+  if(labCol==T) 
+    g2=g2+scale_x_continuous(breaks=(1:cols)-0.5, labels=colnames(m))
+  if(labCol==F) 
+    g2=g2+scale_x_continuous(breaks=(1:cols)-0.5, labels=rep('',cols))
+ 
+  if(labRow==T) 
+    g2=g2+scale_y_continuous(breaks=(1:rows)-0.5, labels=rownames(m))	
+	if(labRow==F) 
+    g2=g2+scale_y_continuous(breaks=(1:rows)-0.5, labels=rep('',rows))	
+ 
+  ## get rid of grey panel background and gridlines
+ 
+  g2=g2+opts(panel.grid.minor=theme_line(colour=NA), panel.grid.major=theme_line(colour=NA),
+  panel.background=theme_rect(fill=NA, colour=NA))
+ 
+  ## finally add the fill colour ramp of your choice (default is blue to red)-- and return
+  return(g2+scale_fill_continuous("", heatscale[1], heatscale[2]))
+ 
+}
+
+
+
+library(gplots)
+hmcol = colorRampPalette(c("steelblue", "white", "darkred"))(100)
+plotHeatmap <- function(data, colIndex, rowIndex, title){
+    mat <- as.matrix(data[rowIndex, colIndex])
+   zmat <- (mat - rowMeans(mat))/apply(mat, 1, sd)
+    heatmap.2(zmat, 
+              col = hmcol, 
+              trace = "none", 
+              scale = "none",
+              labRow = data[, grep("Symbol", colnames(data))],
+              margin = c(15, 6),
+              keysize = 1.5,
+              density.info = "none",
+              key.title = "z-score",
+              key.xlab = "z-score",
+              main = title)
+}
+
+
+## Down Treated
+
+pdf("SR Treated Down Only.pdf", height = 100 , width = 5)
+plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sr, "SR Treated Down Only")
+dev.off()
+
+pdf("SEN Treated Down Only.pdf", height = 300 , width = 5)
+plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sen, "SR Treated Down Only")
+dev.off()
+
+pdf("Treated Down Intersect.pdf", height = 15, width = 5)
+plotHeatmap(gfold.df, gfold.exprs, gfold.dn.intersect, "Treated Down Intersect")
+dev.off()
+
 ```
 
 # Expression Level of Individual Genes/Sequences
@@ -528,7 +619,6 @@ plotMore <- function(datasets, setnames, genes){
     multiplot(plotlist = res, cols = 3 )
 }
 
-
 ```
 
 ```{r message = FALSE, warning = FALSE, fig.height = 3, fig.wdith = 14}
@@ -540,8 +630,6 @@ Map(plotMore, datasets, setnames, rep(list(old.hk), length(datasets)))
 
 ```{r}
 write.csv(actb.df, "actb.normalized.counts.csv", quote = FALSE, row.names = FALSE)
-
-write.csv(rpkms.actb.df, "actb.normalized.rpkms.csv", quote = FALSE, row.names = FALSE)
 ```
 
 
