@@ -85,6 +85,7 @@ In this analysis, **technical replicates for each condition were combined** to i
 
 ```{r filterLibs, fig.width = 6}
 c15 <- c6
+C15 <- c15[1:4]
 sr_tr = grep("sr_treated", colnames(counts))
 sr_un = grep("sr_untreated", colnames(counts))
 sen_tr = grep("sen_treated", colnames(counts))
@@ -93,15 +94,18 @@ rej_tr = grep("rej_treated", colnames(counts))
 rej_un = grep("rej_untreated", colnames(counts))
 
 
-counts <- data.frame( sr_treated = apply(counts[, sr_tr], 1, sum),
-                      sr_untreated = apply(counts[, sr_un], 1, sum),
-                      sen_treated = apply(counts[, sen_tr], 1, sum),
-                      sen_untreated = apply(counts[, sen_un], 1, sum),
-                      rej_treated = apply(counts[, rej_tr], 1, sum),
-                      rej_untreated = apply(counts[, rej_un], 1, sum))
+counts <- data.frame( sr_untreated = apply(counts[, sr_un], 1, sum)
+                      ,sr_treated = apply(counts[, sr_tr], 1, sum)
+                      ,sen_untreated = apply(counts[, sen_un], 1, sum)
+                      ,sen_treated = apply(counts[, sen_tr], 1, sum)
+                      #,rej_untreated = apply(counts[, rej_un], 1, sum)
+                      #,rej_treated = apply(counts[, rej_tr], 1, sum)
+                    )
 head(counts, 2)
 plotDistribution(counts+1, "Distribution of Read Counts")
 ```
+
+
 
 ## ERCC Counts
 
@@ -110,18 +114,19 @@ The ERCC counts for each library were downloaded from the **Ion Proton** server 
 ```{r readERCC, fig.width = 6}
 ercc <- read.table("./kazak_data/ercc_counts.txt", header = TRUE)
 
-ercc <- data.frame( sr_treated = apply(ercc[, sr_tr], 1, sum),
-                    sr_untreated = apply(ercc[, sr_un], 1, sum),
-                    sen_treated = apply(ercc[, sen_tr], 1, sum),
-                    sen_untreated = apply(ercc[, sen_un], 1, sum),
-                    rej_treated = apply(ercc[, rej_tr], 1, sum),
-                    rej_untreated = apply(ercc[, rej_un], 1, sum))
+ercc <- data.frame( sr_untreated = apply(ercc[, sr_un], 1, sum)
+                    , sr_treated = apply(ercc[, sr_tr], 1, sum)
+                    , sen_untreated = apply(ercc[, sen_un], 1, sum)
+                    , sen_treated = apply(ercc[, sen_tr], 1, sum)
+                    #, rej_untreated = apply(ercc[, rej_un], 1, sum)
+                    #, rej_treated = apply(ercc[, rej_tr], 1, sum)
+                  )
 head(ercc, 2)
 
 plotDistribution(ercc+1, "Distribution of ERCC Counts")
 ```
 
-In general, the distribution of **`r nrow(ercc)`**ERCC counts follows the trend of total read counts.
+In general, the distribution of **`r nrow(ercc)`** ERCC counts follows the trend of total read counts.
 
 ## Determining Lower Limit of Detection
 
@@ -143,7 +148,7 @@ colnames(true.ercc) = c("ercc.id", "mix1.attmoles")
 ```
 
 
-```{r obsERCCvsTrue, fig.height = 6, fig.width = 9}
+```{r obsERCCvsTrue, fig.height = 6, fig.width = 6}
 library(reshape)
 library(lattice)
 
@@ -162,7 +167,7 @@ erccOvsE <- function(data, title = ""){
     mdf$sample <- ordered(mdf$sample)
     
     xyplot( log2(value + 1) ~ log2(expected+1) | sample, data = mdf, 
-            layout = c(3,2), 
+            layout = c(2,2), 
             as.table = TRUE, 
             pch = 20, 
             col = rgb(70, 130, 180, 100, maxColorValue = 255), 
@@ -343,180 +348,117 @@ plotDistribution(actb[grep("ERCC-", actb.df$hgnc_symbol), ], "ACTB Normalized ER
 
 # Calling Differential Expression with GFOLD
 
-```{r cache = TRUE}
-remote.gfold = "http://jordan.biology.gatech.edu/lulu/data/kazak.DEgenes.normbyACTB.xlsx"
-dest.gfold = "./kazak_data/kazak.DEgenes.normbyACTB.xlsx"
-download.file(remote.gfold, dest.gfold, mode = "wb")
+```{r message = FALSE, cache = TRUE}
+
+
+#remote.gfold = "http://jordan.biology.gatech.edu/lulu/data/kazak.DEgenes.normbyACTB.xlsx"
+#dest.gfold = "./kazak_data/kazak.DEgenes.normbyACTB.xlsx"
+#download.file(remote.gfold, dest.gfold, mode = "wb")
 ##Manuall converted to csv due to large .xlsx file size
 sr.gfold = "./kazak_data/kazak.DEgenes.normbyACTB-sr.csv"
 sen.gfold = "./kazak_data/kazak.DEgenes.normbyACTB-sen.csv"
-```
-
-##SR treated vs SR untreated
-
-```{r message = FALSE, cache = TRUE}
 sr.ws <- read.csv(sr.gfold, header = TRUE)
-```
-
-```{r}
-head(sr.ws)
-```
-
-```{r showGFOLD, eval = TRUE}
-library(ggplot2)
-library(reshape)
-
-showData <- function(data){
-    head(data)
-    df <- melt(data[, 3:4])
-    g <- qplot(df$variable, log2(df$value), data = df, geom = "boxplot", fill = df$variable, xlab = "", ylab = "log2 Counts")
-    print(g)
-    p <- qplot(log2(df$value), data = df, geom = "density", color = df$variable, xlab = "log2 Counts")
-    p
-}
-
-showData(sr.ws)
-```
-
-
-##SEN treated vs SEN untreated
-
-```{r message = FALSE, cache = TRUE}
 sen.ws <- read.csv(sen.gfold, header = TRUE)
 ```
 
+
+## Input for GFOLD: ACTB + Gene Length Normalized Expression
+
+
 ```{r}
-head(sen.ws)
-```
-
-```{r eval = TRUE}
-showData(sen.ws)
-```
-
-## Hierachical Clustering
-
-```{r hclust}
 mdf <- merge(sr.ws, sen.ws, by.x = "RefSeq.ID", by.y = "RefSeq.ID")
 colnames(mdf) <- gsub("\\.x", "\\.sr", colnames(mdf))
 colnames(mdf) <- gsub("\\.y", "\\.sen", colnames(mdf))
 
 gfold.df <- mdf[, grep("Gene.Symbol.sen", colnames(mdf), invert = TRUE)]
 gfold.exprs <- grep("SR|SEN", colnames(gfold.df), perl = TRUE)
-
-
-gfold.up.union = (gfold.df$GFOLD.sr > 0.01 | gfold.df$GFOLD.sen > 0.01)
-gfold.up.sr = (gfold.df$GFOLD.sr > 0.01 & gfold.df$GFOLD.sen <= 0.01)
-gfold.up.sen = (gfold.df$GFOLD.sr <= 0.01 & gfold.df$GFOLD.sen > 0.01)
-gfold.up.intersect = (gfold.df$GFOLD.sr > 0.01 & gfold.df$GFOLD.sen > 0.01)
-
-
-gfold.dn.union = (gfold.df$GFOLD.sr < -0.01 | gfold.df$GFOLD.sen < -0.01)
-gfold.dn.sr = (gfold.df$GFOLD.sr < -0.01 & gfold.df$GFOLD.sen >= -0.01)
-gfold.dn.sen = (gfold.df$GFOLD.sr >= -0.01 & gfold.df$GFOLD.sen < -0.01)
-gfold.dn.intersect = (gfold.df$GFOLD.sr < -0.01 & gfold.df$GFOLD.sen < -0.01)
 ```
+
+```{r gfoldDistribution}
+#pdf("actb+length_distribution.pdf", height = 10, width = 10)
+plotDistribution(gfold.df[, gfold.exprs], "Distribution of ACTB + Length Normalized Counts")
+#dev.off()
+```
+
+## Comparing DE Genes in SR and SEN upon Treatment
+```{r}
+gfold.cut = 0.01
+```
+
+```{r gfoldDE}
+gfold.up.sr = gfold.df$GFOLD.sr > gfold.cut
+gfold.up.sen = gfold.df$GFOLD.sen > gfold.cut
+gfold.dn.sr = gfold.df$GFOLD.sr < -gfold.cut
+gfold.dn.sen = gfold.df$GFOLD.sen < -gfold.cut
+
+
+gfold.up.union = (gfold.df$GFOLD.sr > gfold.cut | gfold.df$GFOLD.sen > gfold.cut)
+gfold.up.sr.u = (gfold.df$GFOLD.sr > gfold.cut & gfold.df$GFOLD.sen <= gfold.cut)
+gfold.up.sen.u = (gfold.df$GFOLD.sr <= gfold.cut & gfold.df$GFOLD.sen > gfold.cut)
+gfold.up.intersect = (gfold.df$GFOLD.sr > gfold.cut & gfold.df$GFOLD.sen > gfold.cut)
+
+
+gfold.dn.union = (gfold.df$GFOLD.sr < -gfold.cut | gfold.df$GFOLD.sen < -gfold.cut)
+gfold.dn.sr.u = (gfold.df$GFOLD.sr < -gfold.cut & gfold.df$GFOLD.sen >= -gfold.cut)
+gfold.dn.sen.u = (gfold.df$GFOLD.sr >= -gfold.cut & gfold.df$GFOLD.sen < -gfold.cut)
+gfold.dn.intersect = (gfold.df$GFOLD.sr < -gfold.cut & gfold.df$GFOLD.sen < -gfold.cut)
+```
+
+With the GFOLD score cutoff set at **`r gfold.cut`**, we got the following results for differentially expressed genes:
+
+Set Name | Number of Gene
+---- | ----
+Up-regulated genes in SR treated | `r sum(gfold.up.sr)`
+Down-regulated genes in SR treated | `r sum(gfold.dn.sr)`
+Up-regulated in SEN treated | `r sum(gfold.up.sen)`
+Down-regulated in SEN treated | `r sum(gfold.dn.sen)`
+
+```{r vennDiagram}
+library(VennDiagram)
+
+vennGen <- function(name1, up.m1, name2, up.m2, id){
+    m1.up <- up.m1[, id]
+    m2.up <- up.m2[, id]
+    print(length(m1.up))
+    print(length(m2.up))
+    res <- list(m1.up, m2.up)
+    names(res) = c(name1, name2)
+    return(res)
+}
+
+x <- vennGen("SR_up", gfold.df[gfold.up.sr, ], "SEN_up", gfold.df[gfold.up.sen, ], "Gene.Symbol.sr")
+
+venn.diagram(x, "sr_sen_up.png", imagetype = "png", fill = c6[5:6])
+
+```
+
+<img src="sr_sen_up.png" width=300 height=300 />
+
+
+## Hierachical Clustering
 
 Hierarchical clustering was performed and heatmap was generated to visualize gene clusters. 8 heatmaps were generated for
 
 Set Name | Number of Gene
 ---- | ----
 Union of up-regulated genes in SR treated and SEN treated | `r sum(gfold.up.union)`
-Genes up-regulated in SR treated only | `r sum(gfold.up.sr)`
-Genes up-regulated in SEN treated only | `r sum(gfold.up.sen)`
+Genes up-regulated in SR treated only | `r sum(gfold.up.sr.u)`
+Genes up-regulated in SEN treated only | `r sum(gfold.up.sen.u)`
 Intersection of up-regulated genes in SR treated and SEN treated | `r sum(gfold.up.intersect)`
 Union of down-regulated genes in SR treated and SEN treated | `r sum(gfold.dn.union)`
-Genes down-regulated in SR treated only | `r sum(gfold.dn.sr)`
-Genes down-regulated in SEN treated only | `r sum(gfold.dn.sen)`
+Genes down-regulated in SR treated only | `r sum(gfold.dn.sr.u)`
+Genes down-regulated in SEN treated only | `r sum(gfold.dn.sen.u)`
 Intersection of down-regulated genes in SR treated and SEN treated | `r sum(gfold.dn.intersect)`
 
 
-```{r plot8heatmap}
-ggheat = function(m, rescaling='none', clustering='none', labCol=T, labRow=T, border=FALSE, heatscale= c(low='blue',high='red')) {
-  ## the function can be be viewed as a two step process
-  ## 1. using the rehape package and other funcs the data is clustered, scaled, and reshaped
-  ## using simple options or by a user supplied function
-  ## 2. with the now resahped data the plot, the chosen labels and plot style are built
- 
-  require(reshape)
-  require(ggplot2)
- 
-  ## you can either scale by row or column not both! 
-  ## if you wish to scale by both or use a differen scale method then simply supply a scale
-  ## function instead NB scale is a base funct
- 
-  if(is.function(rescaling))
-  { 
-    m=rescaling(m)
-  } 
-  else 
-  {
-    if(rescaling=='column') 
-      m=scale(m, center=T)
-    if(rescaling=='row') 
-      m=t(scale(t(m),center=T))
-  }
- 
-  ## I have supplied the default cluster and euclidean distance- and chose to cluster after scaling
-  ## if you want a different distance/cluster method-- or to cluster and then scale
-  ## then you can supply a custom function 
- 
-  if(is.function(clustering)) 
-  {
-    m=clustering(m)
-  }else
-  {
-  if(clustering=='row')
-    m=m[hclust(dist(m))$order, ]
-  if(clustering=='column')  
-    m=m[,hclust(dist(t(m)))$order]
-  if(clustering=='both')
-    m=m[hclust(dist(m))$order ,hclust(dist(t(m)))$order]
-  }
-  ## this is just reshaping into a ggplot format matrix and making a ggplot layer
- 
-  rows=dim(m)[1]
-  cols=dim(m)[2]
-  melt.m=cbind(rowInd=rep(1:rows, times=cols), colInd=rep(1:cols, each=rows) ,melt(m))
-	g=ggplot(data=melt.m)
- 
-  ## add the heat tiles with or without a white border for clarity
- 
-  if(border==TRUE)
-    g2=g+geom_rect(aes(xmin=colInd-1,xmax=colInd,ymin=rowInd-1,ymax=rowInd, fill=value),colour='white')
-  if(border==FALSE)
-    g2=g+geom_rect(aes(xmin=colInd-1,xmax=colInd,ymin=rowInd-1,ymax=rowInd, fill=value))
- 
-  ## add axis labels either supplied or from the colnames rownames of the matrix
- 
-  if(labCol==T) 
-    g2=g2+scale_x_continuous(breaks=(1:cols)-0.5, labels=colnames(m))
-  if(labCol==F) 
-    g2=g2+scale_x_continuous(breaks=(1:cols)-0.5, labels=rep('',cols))
- 
-  if(labRow==T) 
-    g2=g2+scale_y_continuous(breaks=(1:rows)-0.5, labels=rownames(m))	
-	if(labRow==F) 
-    g2=g2+scale_y_continuous(breaks=(1:rows)-0.5, labels=rep('',rows))	
- 
-  ## get rid of grey panel background and gridlines
- 
-  g2=g2+opts(panel.grid.minor=theme_line(colour=NA), panel.grid.major=theme_line(colour=NA),
-  panel.background=theme_rect(fill=NA, colour=NA))
- 
-  ## finally add the fill colour ramp of your choice (default is blue to red)-- and return
-  return(g2+scale_fill_continuous("", heatscale[1], heatscale[2]))
- 
-}
-
-
-
+```{r hclust}
 library(gplots)
 hmcol = colorRampPalette(c("steelblue", "white", "darkred"))(100)
 plotHeatmap <- function(data, colIndex, rowIndex, title){
     mat <- as.matrix(data[rowIndex, colIndex])
    zmat <- (mat - rowMeans(mat))/apply(mat, 1, sd)
     heatmap.2(zmat, 
-              col = hmcol, 
+              col = hmcol,
               trace = "none", 
               scale = "none",
               labRow = data[, grep("Symbol", colnames(data))],
@@ -531,18 +473,112 @@ plotHeatmap <- function(data, colIndex, rowIndex, title){
 
 ## Down Treated
 
-pdf("SR Treated Down Only.pdf", height = 100 , width = 5)
-plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sr, "SR Treated Down Only")
-dev.off()
+#pdf("SR Treated Down Only.pdf", height = 100 , width = 5)
+#plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sr.u, "SR Treated Down Only")
+#dev.off()
 
-pdf("SEN Treated Down Only.pdf", height = 300 , width = 5)
-plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sen, "SR Treated Down Only")
-dev.off()
+#pdf("SEN Treated Down Only.pdf", height = 300 , width = 5)
+#plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sen.u, "SR Treated Down Only")
+#dev.off()
 
 pdf("Treated Down Intersect.pdf", height = 15, width = 5)
 plotHeatmap(gfold.df, gfold.exprs, gfold.dn.intersect, "Treated Down Intersect")
 dev.off()
 
+```
+
+
+```{r sectionDensity}
+library(fields)
+up.sr.up.sen = (gfold.df$GFOLD.sr > gfold.cut & gfold.df$GFOLD.sen > gfold.cut)
+up.sr.no.sen = (gfold.df$GFOLD.sr > gfold.cut & gfold.df$GFOLD.sen <= gfold.cut)
+up.sr.dn.sen = (gfold.df$GFOLD.sr > gfold.cut & gfold.df$GFOLD.sen < -gfold.cut)
+no.sr.dn.sen = (gfold.df$GFOLD.sr <= gfold.cut & gfold.df$GFOLD.sen < -gfold.cut)
+
+#gfold.df$Cut.sr = with(gfold.df, 
+#                       cut(GFOLD.sr, 
+#                           c(min(GFOLD.sr), 
+#                             -gfold.cut, 
+#                             gfold.cut, 
+#                             max(GFOLD.sr))))
+
+gfold.df$color = as.factor(with(gfold.df, paste("SR", Regulation.sr, "SEN", Regulation.sen)))
+
+table(gfold.df$color)
+
+#pdf("gfold.density.pdf", height = 10, width = 12)
+
+fudgeit <- function(){
+  xm <- get('xm', envir = parent.frame(1))
+  ym <- get('ym', envir = parent.frame(1))
+  z  <- get('dens', envir = parent.frame(1))
+  colramp <- get('colramp', parent.frame(1))
+  image.plot(xm,ym,z, col = colramp(256), legend.only = T, add =F)
+}
+
+par(mar = c(5,4,4,5) + .1)
+
+smoothScatter(gfold.df$GFOLD.sr, gfold.df$GFOLD.sen, xlim = c(-2, 2), ylim = c(-2, 2), xlab = "GFOLD score SR", ylab = "GFOLD score SEN", postPlotHook = fudgeit)
+#abline(h =  gfold.cut, lty = 3, lwd = 1, col = rgb(0, 0, 0, 0.5))
+#abline(h = -gfold.cut, lty = 3, lwd = 1, col = rgb(0, 0, 0, 0.5))
+#abline(v =  gfold.cut, lty = 3, lwd = 1, col = rgb(0, 0, 0, 0.5))
+#abline(v = -gfold.cut, lty = 3, lwd = 1, col = rgb(0, 0, 0, 0.5))
+
+
+sel <- (gfold.df$GFOLD.sr > gfold.cut & gfold.df$GFOLD.sen > gfold.cut) | (gfold.df$GFOLD.sr < -gfold.cut & gfold.df$GFOLD.sen < -gfold.cut)
+
+g <- ggplot(gfold.df[sel, ], aes(GFOLD.sr, GFOLD.sen)) 
+g + geom_point(aes(col = GFOLD.sr + GFOLD.sen), 
+               size = 2, 
+               alpha = 0.7 ) + 
+    scale_color_gradient2(low = "green", mid = "grey", high = "red", midpoint = 0) + 
+    coord_cartesian(xlim = c(-2, 2), ylim = c(-2, 2)) + 
+    theme_bw() +
+    theme(panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank()) +
+    labs(title = "Intersection of Up- and Down-regulated Genes")
+
+sel <- (gfold.df$GFOLD.sr > gfold.cut & gfold.df$GFOLD.sen <= gfold.cut) | (gfold.df$GFOLD.sr < -gfold.cut & gfold.df$GFOLD.sen >= -gfold.cut)
+
+
+g <- ggplot(gfold.df[sel, ], aes(GFOLD.sr, GFOLD.sen)) 
+g + geom_point(aes(col = GFOLD.sr + GFOLD.sen), 
+               size = 2, 
+               alpha = 0.7) + 
+    scale_color_gradient2(low = "green", mid = "grey", high = "red", midpoint = 0) + 
+    coord_cartesian(xlim = c(-2, 2), ylim = c(-2, 2)) + 
+    theme_bw() +
+    theme(panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank()) +
+    labs(title = "Uniquely Up- and Down-regulated Genes in SR or SEN")
+
+#dev.off()
+
+```
+
+```{r eval = FALSE}
+
+g <- ggplot(gfold.df, aes(GFOLD.sr, GFOLD.sen))
+g + stat_density2d(geom = "tile", n = 300, aes(fill = ..density..^0.2, alpha = 1), contour = FALSE) +
+    geom_point(size = 0.5) +
+    stat_density2d(geom = "tile", aes(fill = ..density..^0.2, alpha = ifelse(..density..^0.2 < 0.4, 0, 1)), contour = FALSE) + 
+    scale_fill_gradientn(colours = colorRampPalette(c("white", blues9))(256)) + 
+    coord_cartesian(xlim = c(-2, 2), ylim = c(-2, 2)) + 
+    theme_bw() +
+    theme(panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank())
+
+```
+
+
+
+## Pairwise distance between samples
+```{r distSamples, message = FALSE, fig.height = 6}
+library(gplots)
+dists = dist(t(gfold.df[, gfold.exprs]))
+mat = as.matrix(dists)
+#rownames(mat) = colnames(mat) = pData(cds)$condition
+heatmap.2(mat, trace = "none", col = rev(hmcol), margin = c(13, 13))
 ```
 
 # Expression Level of Individual Genes/Sequences
@@ -625,6 +661,20 @@ plotMore <- function(datasets, setnames, genes){
 Map(plotMore, datasets, setnames, rep(list(old.hk), length(datasets)))
 ```
 
+# Functional Enrichment Analysis
+
+## Gene Set Enrichment Analysis
+
+### SR treated vs SR untreated
+
+- [Gene sets enriched in SR treated Up][gs01]
+- [Gene sets enriched in SR treated Down][gs02]
+
+### SEN treated vs SEN untreated
+
+- [Gene sets enriched in SEN treated Up][gs03]
+- [Gene sets enriched in SEN treated Down][gs04]
+
 
 ## Downloadable Files
 
@@ -632,6 +682,9 @@ Map(plotMore, datasets, setnames, rep(list(old.hk), length(datasets)))
 write.csv(actb.df, "actb.normalized.counts.csv", quote = FALSE, row.names = FALSE)
 ```
 
+[Differentially Expressed Protein-coding Genes Normalized by ACTB from GFOLD][f001]
+
+[Unique Up- and Down-regulated Protein-coding Genes Normalized by ACTB from GFOLD][f002]
 
 # Meeting Notes
 
@@ -644,9 +697,16 @@ write.csv(actb.df, "actb.normalized.counts.csv", quote = FALSE, row.names = FALS
 
 [img01]:Kazak_Overall_experimental_design.jpg
 
-[f001]:./data/kazak.DE.pcg.GFOLD.xlsx
+[f001]:./data/kazak.DEgenes.normbyACTB.xlsx
+[f002]:./data/kazak.DEgenes.normbyACTB_Unique.xlsx
 
 [001]:http://www.lifetechnologies.com/order/catalog/product/4456740
 [002]:./slides/20140523.Overall_analytical_design.pdf
 [003]:./slides/20140606.ERCC.pdf
 [004]:./slides/20140828.Normalization_of_kazak_RNA-seq_data.pdf
+
+[gs01]:./data/actb-gsea/sr_vs_sr_treated.Gsea.1412622136725/gsea_report_for_sr_treated_1412622136725.html
+[gs02]:./data/actb-gsea/sr_vs_sr_treated.Gsea.1412622136725/gsea_report_for_sr_untreated_1412622136725.html
+
+[gs03]:./data/actb-gsea/sen_vs_sen_treated.Gsea.1412622307486/gsea_report_for_sen_treated_1412622307486.html
+[gs04]:./data/actb-gsea/sen_vs_sen_treated.Gsea.1412622307486/gsea_report_for_sen_untreated_1412622307486.html
