@@ -105,6 +105,10 @@ head(counts, 2)
 plotDistribution(counts+1, "Distribution of Read Counts")
 ```
 
+```{r libSizes}
+barplot(colSums(counts), col = c6)
+```
+
 
 
 ## ERCC Counts
@@ -348,9 +352,7 @@ plotDistribution(actb[grep("ERCC-", actb.df$hgnc_symbol), ], "ACTB Normalized ER
 
 # Calling Differential Expression with GFOLD
 
-```{r message = FALSE, cache = TRUE}
-
-
+```{r message = FALSE}
 #remote.gfold = "http://jordan.biology.gatech.edu/lulu/data/kazak.DEgenes.normbyACTB.xlsx"
 #dest.gfold = "./kazak_data/kazak.DEgenes.normbyACTB.xlsx"
 #download.file(remote.gfold, dest.gfold, mode = "wb")
@@ -382,7 +384,8 @@ plotDistribution(gfold.df[, gfold.exprs], "Distribution of ACTB + Length Normali
 
 ## Comparing DE Genes in SR and SEN upon Treatment
 ```{r}
-gfold.cut = 0.01
+gfold.cut = quantile(gfold.df$GFOLD.sr, 0.95) 
+perc.de <- mean(gfold.df$GFOLD.sr > gfold.cut | gfold.df$GFOLD.sr < -gfold.cut)
 ```
 
 ```{r gfoldDE}
@@ -404,7 +407,7 @@ gfold.dn.sen.u = (gfold.df$GFOLD.sr >= -gfold.cut & gfold.df$GFOLD.sen < -gfold.
 gfold.dn.intersect = (gfold.df$GFOLD.sr < -gfold.cut & gfold.df$GFOLD.sen < -gfold.cut)
 ```
 
-With the GFOLD score cutoff set at **`r gfold.cut`**, we got the following results for differentially expressed genes:
+With the GFOLD score cutoff set at **`r gfold.cut`**, we have **`r perc.de*100`%** genes differentially expressed. Below are the results for differentially expressed genes:
 
 Set Name | Number of Gene
 ---- | ----
@@ -419,20 +422,36 @@ library(VennDiagram)
 vennGen <- function(name1, up.m1, name2, up.m2, id){
     m1.up <- up.m1[, id]
     m2.up <- up.m2[, id]
-    print(length(m1.up))
-    print(length(m2.up))
     res <- list(m1.up, m2.up)
     names(res) = c(name1, name2)
     return(res)
 }
 
-x <- vennGen("SR_up", gfold.df[gfold.up.sr, ], "SEN_up", gfold.df[gfold.up.sen, ], "Gene.Symbol.sr")
-
+x <- vennGen("SEN_up", gfold.df[gfold.up.sen, ], "SR_up", gfold.df[gfold.up.sr, ], "Gene.Symbol.sr")
 venn.diagram(x, "sr_sen_up.png", imagetype = "png", fill = c6[5:6])
+
+x <- vennGen("SR_down", gfold.df[gfold.dn.sr, ], "SEN_down", gfold.df[gfold.dn.sen, ], "Gene.Symbol.sr")
+venn.diagram(x, "sr_sen_down.png", imagetype = "png", fill = c6[3:4])
+
+
+vennGen <- function(name1, up.m1, name2, up.m2, name3, dn.m3, name4, dn.m4, id){
+    m1.up <- up.m1[, id]
+    m2.up <- up.m2[, id]
+    m3.dn <- dn.m3[, id]
+    m4.dn <- dn.m4[, id]
+    res <- list(m1.up, m2.up, m3.dn, m4.dn)
+    names(res) = c(name1, name2, name3, name4)
+    return(res)
+}
+
+x <- vennGen("SR_up", gfold.df[gfold.up.sr, ], "SEN_up", gfold.df[gfold.up.sen, ], "SR_down", gfold.df[gfold.dn.sr, ], "SEN_down", gfold.df[gfold.dn.sen, ], "Gene.Symbol.sr")
+
+venn.diagram(x, "sr_sen_up_down.png", imagetype = "png", fill = c6[c(5,6,3,4)])
 
 ```
 
-<img src="sr_sen_up.png" width=300 height=300 />
+<img src="sr_sen_up.png" width=400 height=400 />
+<img src="sr_sen_down.png" width=400 height=400 />
 
 
 ## Hierachical Clustering
@@ -450,15 +469,56 @@ Genes down-regulated in SR treated only | `r sum(gfold.dn.sr.u)`
 Genes down-regulated in SEN treated only | `r sum(gfold.dn.sen.u)`
 Intersection of down-regulated genes in SR treated and SEN treated | `r sum(gfold.dn.intersect)`
 
+```{r eval = FALSE}
+##SEN GFOLD vs FC
+g <- ggplot(gfold.df, 
+            aes(log2(gfold.df$SR.treated/gfold.df$SR.untreated),
+                gfold.df$GFOLD.sr))
 
-```{r hclust}
+g + geom_point(aes(col = gfold.df$GFOLD.sr), 
+               size = 2 ) + 
+    scale_color_gradient2(low = "green", mid = "grey", high = "red", midpoint = 0) + 
+    coord_cartesian(xlim = c(-2, 2), ylim = c(-2, 2)) + 
+    theme_bw() +
+    theme(panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank()) +
+    labs(title = "Up- and Down-regulated Genes in SR")
+
+##SEN GFOLD vs FC
+g <- ggplot(gfold.df, 
+            aes(log2(gfold.df$SEN.treated/gfold.df$SEN.untreated),
+                gfold.df$GFOLD.sen))
+
+g + geom_point(aes(col = gfold.df$GFOLD.sen), 
+               size = 2 ) + 
+    scale_color_gradient2(low = "green", mid = "grey", high = "red", midpoint = 0) + 
+    coord_cartesian(xlim = c(-4, 4), ylim = c(-4, 4)) + 
+    theme_bw() +
+    theme(panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank()) +
+    labs(title = "Up- and Down-regulated Genes in SEN")
+```
+
+
+```{r hclust, eval = FALSE}
 library(gplots)
-hmcol = colorRampPalette(c("steelblue", "white", "darkred"))(100)
+hmcol = colorRampPalette(c("green", "darkgreen", "black","darkred", "red"))(100)
 plotHeatmap <- function(data, colIndex, rowIndex, title){
     mat <- as.matrix(data[rowIndex, colIndex])
-   zmat <- (mat - rowMeans(mat))/apply(mat, 1, sd)
+
+    zmat <- (mat - rowMeans(mat))/apply(mat, 1, sd)
+    
+    zmat1 <- zmat[, 1:2]
+    zmat2 <- zmat[, 3:4]
+    med1 <- median(zmat1)
+    med2 <- median(zmat2)
+    zmat1 = zmat1 - med1
+    zmat2 = zmat2 - med2
+    zmat = cbind(zmat1, zmat2)
+    
     heatmap.2(zmat, 
               col = hmcol,
+              Colv = FALSE,
               trace = "none", 
               scale = "none",
               labRow = data[, grep("Symbol", colnames(data))],
@@ -471,24 +531,24 @@ plotHeatmap <- function(data, colIndex, rowIndex, title){
 }
 
 
+## Up Treated
+
+pdf("heatmaps.pdf", height = 10 , width = 5)
+plotHeatmap(gfold.df, gfold.exprs, gfold.up.sr.u, "SR Treated Up Only")
+plotHeatmap(gfold.df, gfold.exprs, gfold.up.sen.u, "SEN Treated Up Only")
+plotHeatmap(gfold.df, gfold.exprs, gfold.up.intersect, "Treated Up intersection")
+
 ## Down Treated
 
-#pdf("SR Treated Down Only.pdf", height = 100 , width = 5)
-#plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sr.u, "SR Treated Down Only")
-#dev.off()
-
-#pdf("SEN Treated Down Only.pdf", height = 300 , width = 5)
-#plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sen.u, "SR Treated Down Only")
-#dev.off()
-
-pdf("Treated Down Intersect.pdf", height = 15, width = 5)
+plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sr.u, "SR Treated Down Only")
+plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sen.u, "SEN Treated Down Only")
 plotHeatmap(gfold.df, gfold.exprs, gfold.dn.intersect, "Treated Down Intersect")
 dev.off()
 
 ```
 
 
-```{r sectionDensity}
+```{r sectionDensity, eval = FALSE}
 library(fields)
 up.sr.up.sen = (gfold.df$GFOLD.sr > gfold.cut & gfold.df$GFOLD.sen > gfold.cut)
 up.sr.no.sen = (gfold.df$GFOLD.sr > gfold.cut & gfold.df$GFOLD.sen <= gfold.cut)
@@ -542,7 +602,7 @@ sel <- (gfold.df$GFOLD.sr > gfold.cut & gfold.df$GFOLD.sen <= gfold.cut) | (gfol
 
 
 g <- ggplot(gfold.df[sel, ], aes(GFOLD.sr, GFOLD.sen)) 
-g + geom_point(aes(col = GFOLD.sr + GFOLD.sen), 
+g + geom_point(aes(col = GFOLD.sr), 
                size = 2, 
                alpha = 0.7) + 
     scale_color_gradient2(low = "green", mid = "grey", high = "red", midpoint = 0) + 
@@ -550,7 +610,21 @@ g + geom_point(aes(col = GFOLD.sr + GFOLD.sen),
     theme_bw() +
     theme(panel.grid.major = element_blank(), 
           panel.grid.minor = element_blank()) +
-    labs(title = "Uniquely Up- and Down-regulated Genes in SR or SEN")
+    labs(title = "Uniquely Up- and Down-regulated Genes in SR")
+
+sel <- (gfold.df$GFOLD.sen > gfold.cut & gfold.df$GFOLD.sr <= gfold.cut) | (gfold.df$GFOLD.sen < -gfold.cut & gfold.df$GFOLD.sr >= -gfold.cut)
+
+
+g <- ggplot(gfold.df[sel, ], aes(GFOLD.sr, GFOLD.sen)) 
+g + geom_point(aes(col = GFOLD.sen), 
+               size = 2, 
+               alpha = 0.7) + 
+    scale_color_gradient2(low = "green", mid = "grey", high = "red", midpoint = 0) + 
+    coord_cartesian(xlim = c(-2, 2), ylim = c(-2, 2)) + 
+    theme_bw() +
+    theme(panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank()) +
+    labs(title = "Uniquely Up- and Down-regulated Genes in SEN")
 
 #dev.off()
 
@@ -575,10 +649,13 @@ g + stat_density2d(geom = "tile", n = 300, aes(fill = ..density..^0.2, alpha = 1
 ## Pairwise distance between samples
 ```{r distSamples, message = FALSE, fig.height = 6}
 library(gplots)
+hmcol = colorRampPalette(c("green", "darkgreen", "black","darkred", "red"))(100)
 dists = dist(t(gfold.df[, gfold.exprs]))
 mat = as.matrix(dists)
 #rownames(mat) = colnames(mat) = pData(cds)$condition
-heatmap.2(mat, trace = "none", col = rev(hmcol), margin = c(13, 13))
+pdf("pairwise-dist.pdf", height = 5, width = 5)
+heatmap.2(mat, trace = "none", col = hmcol, margin = c(13, 13))
+dev.off()
 ```
 
 # Expression Level of Individual Genes/Sequences
@@ -676,7 +753,7 @@ Map(plotMore, datasets, setnames, rep(list(old.hk), length(datasets)))
 - [Gene sets enriched in SEN treated Down][gs04]
 
 
-## Downloadable Files
+# Downloadable Files
 
 ```{r}
 write.csv(actb.df, "actb.normalized.counts.csv", quote = FALSE, row.names = FALSE)
@@ -684,7 +761,6 @@ write.csv(actb.df, "actb.normalized.counts.csv", quote = FALSE, row.names = FALS
 
 [Differentially Expressed Protein-coding Genes Normalized by ACTB from GFOLD][f001]
 
-[Unique Up- and Down-regulated Protein-coding Genes Normalized by ACTB from GFOLD][f002]
 
 # Meeting Notes
 
@@ -693,6 +769,18 @@ write.csv(actb.df, "actb.normalized.counts.csv", quote = FALSE, row.names = FALS
 [20140606][003]
 
 [20140828][004]
+
+# Manuscript
+
+[Figure 1][m001]
+
+[Figure 2][m005]
+
+[Figure S1][m002]
+
+[Figure S2][m003]
+
+[Table S1][m004]
 
 
 [img01]:Kazak_Overall_experimental_design.jpg
@@ -710,3 +798,10 @@ write.csv(actb.df, "actb.normalized.counts.csv", quote = FALSE, row.names = FALS
 
 [gs03]:./data/actb-gsea/sen_vs_sen_treated.Gsea.1412622307486/gsea_report_for_sen_treated_1412622307486.html
 [gs04]:./data/actb-gsea/sen_vs_sen_treated.Gsea.1412622307486/gsea_report_for_sen_untreated_1412622307486.html
+
+
+[m001]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.1-20141016.ai
+[m002]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S1-20141016.ai
+[m003]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S2-20141016.ai
+[m004]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Table S1.xlsx
+[m005]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.2-20141103.ai
