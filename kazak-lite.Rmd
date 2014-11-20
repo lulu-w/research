@@ -384,7 +384,8 @@ plotDistribution(gfold.df[, gfold.exprs], "Distribution of ACTB + Length Normali
 
 ## Comparing DE Genes in SR and SEN upon Treatment
 ```{r}
-gfold.cut = quantile(gfold.df$GFOLD.sr, 0.95) 
+gfold.cut = 0.01
+#gfold.cut = quantile(gfold.df$GFOLD.sr, 0.95) 
 perc.de <- mean(gfold.df$GFOLD.sr > gfold.cut | gfold.df$GFOLD.sr < -gfold.cut)
 ```
 
@@ -503,8 +504,72 @@ g + geom_point(aes(col = gfold.df$GFOLD.sen),
 ```{r hclust, eval = FALSE}
 library(gplots)
 hmcol = colorRampPalette(c("green", "darkgreen", "black","darkred", "red"))(100)
-plotHeatmap <- function(data, colIndex, rowIndex, title){
-    mat <- as.matrix(data[rowIndex, colIndex])
+# plotHeatmap <- function(data, colIndex, rowIndex, title){
+#     mat <- as.matrix(data[rowIndex, colIndex])
+# 
+#     zmat <- (mat - rowMeans(mat))/apply(mat, 1, sd)
+#     
+#     zmat1 <- zmat[, 1:2]
+#     zmat2 <- zmat[, 3:4]
+#     med1 <- median(zmat1)
+#     med2 <- median(zmat2)
+#     zmat1 = zmat1 - med1
+#     zmat2 = zmat2 - med2
+#     zmat = cbind(zmat1, zmat2)
+#     
+#     heatmap.2(zmat, 
+#               col = hmcol,
+#               Colv = FALSE,
+#               trace = "none", 
+#               scale = "none",
+#               labRow = data[, grep("Symbol", colnames(data))],
+#               margin = c(15, 6),
+#               keysize = 1.5,
+#               density.info = "none",
+#               key.title = "z-score",
+#               key.xlab = "z-score",
+#               main = title)
+# }
+
+
+## Up Treated
+
+# pdf("heatmaps.pdf", height = 10 , width = 5)
+# plotHeatmap(gfold.df, gfold.exprs, gfold.up.sr.u, "SR Treated Up Only")
+# plotHeatmap(gfold.df, gfold.exprs, gfold.up.sen.u, "SEN Treated Up Only")
+# plotHeatmap(gfold.df, gfold.exprs, gfold.up.intersect, "Treated Up intersection")
+
+## Down Treated
+
+# plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sr.u, "SR Treated Down Only")
+# plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sen.u, "SEN Treated Down Only")
+# plotHeatmap(gfold.df, gfold.exprs, gfold.dn.intersect, "Treated Down Intersect")
+# dev.off()
+
+
+## TOP 500 or less
+top.n = 500
+
+plotHeatmap <- function(data, rowIndex, sort.by, title){
+    data <- data[rowIndex, ]
+    if( length(sort.by) > 1 ){
+        data$key <- data[, sort.by[1]] + data[, sort.by[2]]
+        if( length(grep("Up", title)) > 0 ){
+            data <- data[order(data$key, decreasing = TRUE), ]
+        }else{
+            data <- data[order(data$key), ]
+        }
+    }else{
+        if( length(grep("Up", title)) > 0 ){
+            data <- data[order(data[, sort.by], decreasing = TRUE), ]
+        }else{
+            data <- data[order(data[, sort.by]), ]
+        }
+    }
+
+    data <- data[1:min(nrow(data), 500), ]
+
+    mat <- as.matrix(data[, gfold.exprs])
 
     zmat <- (mat - rowMeans(mat))/apply(mat, 1, sd)
     
@@ -530,20 +595,19 @@ plotHeatmap <- function(data, colIndex, rowIndex, title){
               main = title)
 }
 
-
 ## Up Treated
 
-pdf("heatmaps.pdf", height = 10 , width = 5)
-plotHeatmap(gfold.df, gfold.exprs, gfold.up.sr.u, "SR Treated Up Only")
-plotHeatmap(gfold.df, gfold.exprs, gfold.up.sen.u, "SEN Treated Up Only")
-plotHeatmap(gfold.df, gfold.exprs, gfold.up.intersect, "Treated Up intersection")
+#pdf("heatmaps.pdf", height = 10 , width = 5)
+plotHeatmap(gfold.df, gfold.up.sr.u, grep("GFOLD.sr", colnames(gfold.df)), "SR Treated Up Only")
+plotHeatmap(gfold.df, gfold.up.sen.u, grep("GFOLD.sen", colnames(gfold.df)), "SEN Treated Up Only")
+plotHeatmap(gfold.df, gfold.up.intersect, grep("GFOLD", colnames(gfold.df)), "Treated Up intersection")
 
 ## Down Treated
 
-plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sr.u, "SR Treated Down Only")
-plotHeatmap(gfold.df, gfold.exprs, gfold.dn.sen.u, "SEN Treated Down Only")
-plotHeatmap(gfold.df, gfold.exprs, gfold.dn.intersect, "Treated Down Intersect")
-dev.off()
+plotHeatmap(gfold.df, gfold.dn.sr.u, grep("GFOLD.sr", colnames(gfold.df)), "SR Treated Down Only")
+plotHeatmap(gfold.df, gfold.dn.sen.u, grep("GFOLD.sen", colnames(gfold.df)), "SEN Treated Down Only")
+plotHeatmap(gfold.df, gfold.dn.intersect, grep("GFOLD", colnames(gfold.df)), "Treated Down Intersect")
+#dev.off()
 
 ```
 
@@ -652,10 +716,16 @@ library(gplots)
 hmcol = colorRampPalette(c("green", "darkgreen", "black","darkred", "red"))(100)
 dists = dist(t(gfold.df[, gfold.exprs]))
 mat = as.matrix(dists)
-#rownames(mat) = colnames(mat) = pData(cds)$condition
-pdf("pairwise-dist.pdf", height = 5, width = 5)
-heatmap.2(mat, trace = "none", col = hmcol, margin = c(13, 13))
+
+hc <- hclust(dists)
+par(mar = c(0, 5, 2, 1), cex = 1)
+pdf("pairwise-dist-dendro.pdf", height = 5, width = 3)
+plot(hc, ylab = "", xlab = "")
 dev.off()
+
+#pdf("pairwise-dist.pdf", height = 5, width = 5)
+heatmap.2(mat, trace = "none", col = hmcol, margin = c(13, 13))
+#dev.off()
 ```
 
 # Expression Level of Individual Genes/Sequences
@@ -753,6 +823,12 @@ Map(plotMore, datasets, setnames, rep(list(old.hk), length(datasets)))
 - [Gene sets enriched in SEN treated Down][gs04]
 
 
+# Transcription Factor Enrichment Analysis
+
+## ENCODEQT Results
+
+- [ENCODEQT TF Enrichment Results][tf01]
+
 # Downloadable Files
 
 ```{r}
@@ -772,15 +848,13 @@ write.csv(actb.df, "actb.normalized.counts.csv", quote = FALSE, row.names = FALS
 
 # Manuscript
 
-[Figure 1][m001]
-
-[Figure 2][m005]
-
-[Figure S1][m002]
-
-[Figure S2][m003]
-
-[Table S1][m004]
+Figure/Table | AI | PDF
+----| ----| ----
+Figure 1 | [AI][m0011] | [PDF][m0012]
+Figure S1 | [AI][m0021] | [PDF][m0022]
+Figure S2 | [AI][m0031] | [PDF][m0032]
+Figure S3 | [AI][m0041] | [PDF][m0042]
+Table S1 | [xlsx][m0051] | 
 
 
 [img01]:Kazak_Overall_experimental_design.jpg
@@ -799,9 +873,14 @@ write.csv(actb.df, "actb.normalized.counts.csv", quote = FALSE, row.names = FALS
 [gs03]:./data/actb-gsea/sen_vs_sen_treated.Gsea.1412622307486/gsea_report_for_sen_treated_1412622307486.html
 [gs04]:./data/actb-gsea/sen_vs_sen_treated.Gsea.1412622307486/gsea_report_for_sen_untreated_1412622307486.html
 
+[tf01]:tf-enrichment.html
 
-[m001]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.1-20141016.ai
-[m002]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S1-20141016.ai
-[m003]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S2-20141016.ai
-[m004]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Table S1.xlsx
-[m005]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.2-20141103.ai
+[m0011]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.1.ai
+[m0012]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.1.pdf
+[m0021]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S1.ai
+[m0022]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S1.pdf
+[m0031]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S2.ai
+[m0032]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S2.pdf
+[m0041]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S3.ai
+[m0042]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S3.pdf
+[m0051]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Table.S1.xlsx
