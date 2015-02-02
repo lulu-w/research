@@ -611,6 +611,52 @@ plotHeatmap(gfold.df, gfold.dn.intersect, grep("GFOLD", colnames(gfold.df)), "Tr
 
 ```
 
+```{r plotChapter, eval =FALSE}
+plotChapterHeatmap <- function(data, rowIndex, title){
+    data <- data[rowIndex, ]
+    mat <- as.matrix(data[, gfold.exprs])
+
+    zmat <- (mat - rowMeans(mat))/apply(mat, 1, sd)
+    
+    zmat1 <- zmat[, 1:2]
+    zmat2 <- zmat[, 3:4]
+    med1 <- median(zmat1)
+    med2 <- median(zmat2)
+    zmat1 = zmat1 - med1
+    zmat2 = zmat2 - med2
+    zmat = cbind(zmat1, zmat2)
+    
+    heatmap.2(zmat, 
+              col = hmcol,
+              Colv = FALSE,
+              trace = "none", 
+              scale = "none",
+              labRow = data[, grep("Symbol", colnames(data))],
+              margin = c(15, 6),
+              keysize = 1.5,
+              density.info = "none",
+              key.title = "z-score",
+              key.xlab = "z-score",
+              main = title)
+}
+
+## Up Treated
+
+#pdf("heatmaps.pdf", height = 10 , width = 5)
+plotHeatmap(gfold.df, gfold.up.sr.u, grep("GFOLD.sr", colnames(gfold.df)), "SR Treated Up Only")
+plotHeatmap(gfold.df, gfold.up.sen.u, grep("GFOLD.sen", colnames(gfold.df)), "SEN Treated Up Only")
+plotHeatmap(gfold.df, gfold.up.intersect, grep("GFOLD", colnames(gfold.df)), "Treated Up intersection")
+
+## Down Treated
+
+plotHeatmap(gfold.df, gfold.dn.sr.u, grep("GFOLD.sr", colnames(gfold.df)), "SR Treated Down Only")
+plotHeatmap(gfold.df, gfold.dn.sen.u, grep("GFOLD.sen", colnames(gfold.df)), "SEN Treated Down Only")
+plotHeatmap(gfold.df, gfold.dn.intersect, grep("GFOLD", colnames(gfold.df)), "Treated Down Intersect")
+#dev.off()
+
+
+```
+
 
 ```{r sectionDensity, eval = FALSE}
 library(fields)
@@ -823,6 +869,37 @@ Map(plotMore, datasets, setnames, rep(list(old.hk), length(datasets)))
 - [Gene sets enriched in SEN treated Down][gs04]
 
 
+## Gene Set Enrichment Analysis with Wilcoxon Test
+
+- [SR treated vs SR untreated][gs05]
+
+- [SEN treated vs SEN untreated][gs06]
+
+### Pathway Graph
+
+```{r}
+tb <- read.csv("DownPathway-NodeAttributes.csv", header = T, stringsAsFactors = F)
+pg <- strsplit(tb$SELF.REPLICATING, ", ")
+names(pg) = tb$PATHWAY
+pnames = tb$PATHWAY
+res <- apply(combn(1:length(pg), 2), 2, function(x) {
+    total = sum(pg[[x[1]]] %in% pg[[x[2]]])
+    res = c(pnames[x[1]], pnames[x[2]], total)
+})
+df = as.data.frame(t(res), stringsAsFactors = F)
+df1 = df[df$V3 > 0, ]
+write.csv(df1, "DownPathway-EdgeAttributes.csv", quote = F, row.names = F)
+```
+
+```{r geneSetsFromGSEA, eval = F}
+library(reshape)
+tb <- read.csv("c2.cp.biocarta.v4.0.symbols.gmt.csv", header = F, stringsAsFactors = F)
+mylist <- strsplit(tb$V3, "\t")
+names(mylist) = tb$V1
+mdf <- melt(mylist)
+```
+
+
 # Transcription Factor Enrichment Analysis
 
 ## ENCODEQT Results
@@ -872,6 +949,8 @@ Table S1 | [xlsx][m0051] |
 
 [gs03]:./data/actb-gsea/sen_vs_sen_treated.Gsea.1412622307486/gsea_report_for_sen_treated_1412622307486.html
 [gs04]:./data/actb-gsea/sen_vs_sen_treated.Gsea.1412622307486/gsea_report_for_sen_untreated_1412622307486.html
+[gs05]:./data/wilcoxon/SR-vs-SR-treated.html
+[gs06]:./data/wilcoxon/SEN-vs-SEN-treated.html
 
 [tf01]:tf-enrichment.html
 
