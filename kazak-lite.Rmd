@@ -877,8 +877,9 @@ Map(plotMore, datasets, setnames, rep(list(old.hk), length(datasets)))
 
 ### Pathway Graph
 
-```{r}
-tb <- read.csv("DownPathway-NodeAttributes.csv", header = T, stringsAsFactors = F)
+```{r eval = F}
+# Down Pathway
+tb <- read.csv("./pathway.graph.data/DownPathway-NodeAttributes.csv", header = T, stringsAsFactors = F)
 pg <- strsplit(tb$SELF.REPLICATING, ", ")
 names(pg) = tb$PATHWAY
 pnames = tb$PATHWAY
@@ -888,7 +889,47 @@ res <- apply(combn(1:length(pg), 2), 2, function(x) {
 })
 df = as.data.frame(t(res), stringsAsFactors = F)
 df1 = df[df$V3 > 0, ]
-write.csv(df1, "DownPathway-EdgeAttributes.csv", quote = F, row.names = F)
+write.csv(df1, "./pathway.graph.data/DownPathway-EdgeAttributes.csv", quote = F, row.names = F)
+
+# Up Pathway
+## SR
+tb <- read.csv("./pathway.graph.data/UpPathway-NodeAttributes-SR.csv", header = T, stringsAsFactors = F)
+pg <- strsplit(tb$SELF.REPLICATING, ", ")
+names(pg) = tb$PATHWAY
+pnames = tb$PATHWAY
+res <- apply(combn(1:length(pg), 2), 2, function(x) {
+    total = sum(pg[[x[1]]] %in% pg[[x[2]]])
+    res = c(pnames[x[1]], pnames[x[2]], total)
+})
+df = as.data.frame(t(res), stringsAsFactors = F)
+df1 = df[df$V3 > 0, ]
+write.csv(df1, "./pathway.graph.data/UpPathway-EdgeAttributes-SR.csv", quote = F, row.names = F)
+
+## SEN
+tb <- read.csv("./pathway.graph.data/UpPathway-NodeAttributes-SEN.csv", header = T, stringsAsFactors = F)
+pg <- strsplit(tb$SELF.REPLICATING, ", ")
+names(pg) = tb$PATHWAY
+pnames = tb$PATHWAY
+res <- apply(combn(1:length(pg), 2), 2, function(x) {
+    total = sum(pg[[x[1]]] %in% pg[[x[2]]])
+    res = c(pnames[x[1]], pnames[x[2]], total)
+})
+df = as.data.frame(t(res), stringsAsFactors = F)
+df1 = df[df$V3 > 0, ]
+write.csv(df1, "./pathway.graph.data/UpPathway-EdgeAttributes-SEN.csv", quote = F, row.names = F)
+
+## INTERSECT
+tb <- read.csv("./pathway.graph.data/UpPathwayIntersect-NodeAttributes.csv", header = T, stringsAsFactors = F)
+pg <- strsplit(tb$SELF.REPLICATING, ", ")
+names(pg) = tb$PATHWAY
+pnames = tb$PATHWAY
+res <- apply(combn(1:length(pg), 2), 2, function(x) {
+    total = sum(pg[[x[1]]] %in% pg[[x[2]]])
+    res = c(pnames[x[1]], pnames[x[2]], total)
+})
+df = as.data.frame(t(res), stringsAsFactors = F)
+df1 = df[df$V3 > 0, ]
+write.csv(df1, "./pathway.graph.data/UpPathwayIntersect-EdgeAttributes.csv", quote = F, row.names = F)
 ```
 
 ```{r geneSetsFromGSEA, eval = F}
@@ -896,7 +937,45 @@ library(reshape)
 tb <- read.csv("c2.cp.biocarta.v4.0.symbols.gmt.csv", header = F, stringsAsFactors = F)
 mylist <- strsplit(tb$V3, "\t")
 names(mylist) = tb$V1
-mdf <- melt(mylist)
+
+# Hypergeometric test
+sr.up.only = as.character(gfold.df[gfold.up.sr.u, 2])
+sr.up.only = sr.up.only[order(gfold.df[gfold.up.sr.u, "GFOLD.sr"], decreasing = T)]
+sen.up.only = as.character(gfold.df[gfold.up.sen.u, 2])
+sen.up.only = sen.up.only[order(gfold.df[gfold.up.sen.u, "GFOLD.sen"], decreasing = T)]
+up.intersect = as.character(gfold.df[gfold.up.intersect, 2])
+up.intersect = up.intersect[order(gfold.df[gfold.up.intersect, "GFOLD.sr"], decreasing = T)]
+
+plist <- read.csv("./pathway.graph.data/plist-up-pathway-intersect.csv", header = T, stringsAsFactors = F)
+# Remove white space
+plist$PATHWAY = gsub(" ", "", plist$PATHWAY)
+
+#paste(up.intersect[up.intersect %in% mylist$BIOCARTA_INTEGRIN_PATHWAY], collapse = ", ")
+#sum(up.intersect %in% mylist$BIOCARTA_INTEGRIN_PATHWAY)
+
+res = sapply(plist$PATHWAY, function(x) {
+    res = paste(up.intersect[up.intersect %in% mylist[[x]]], collapse = ", ")
+    res = c(res, sum(up.intersect %in% mylist[[x]]))
+})
+
+
+
+M = 2778 #M: number of up-reg gene sybols mapped by GSEA
+knownGenes = 45956 #http://www.genecards.org/
+N = knownGenes - M
+
+#Example K=28, k=16
+p.value = 1-phyper(16-1, M, knownGenes-M, 28)
+
+#pvals <- lapply(mylist, 
+
+# myHpg <- function(x, M=M, N=N, gene.set=sr.up.only){
+#     K=length(x)
+#     k=sum(gene.set %in% x)
+#     p.value = 1-phyper(k-1, M, N, K)
+# }
+                
+#mdf <- melt(mylist)
 ```
 
 
