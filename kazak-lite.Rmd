@@ -161,8 +161,13 @@ lib.cut <- 2
 
 ercc.df <- cbind(ercc.id = rownames(ercc), ercc, stringsAsFactors = FALSE)
 
+
 erccOvsE <- function(data, title = ""){
     temp <- merge(data, true.ercc, by.x = colnames(data)[grep("id", colnames(data))], by.y = "ercc.id")
+    
+    R <- cor(temp[, 2:5], temp[, 6])
+    
+    print(R)
     
     mdf <- melt(temp[, c(1, grep("sr|sen|rej", colnames(temp)))], id = colnames(data)[grep("id", colnames(data))], variable_name = "sample")
     
@@ -615,7 +620,7 @@ library(gplots)
 hmcol = colorRampPalette(c("green", "black", "red"))(100)
 
 ## Selected gene from Victoria
-geneset <- read.csv("./kazak_data/DATA_for_hitmaps_VL-Lulu.csv", header = T)
+geneset <- read.csv("./kazak_data/DATA_for_hitmaps_VL-Lulu-SIVA1-added.csv", header = T)
 
 geneset.p <- split(geneset, as.factor(geneset$panel))
 geneset.p.dfs <- lapply(geneset.p, function(x) res = merge(x, gfold.df, by.x = "symbol", by.y = "Gene.Symbol.sr"))
@@ -627,22 +632,20 @@ plotSelectedHeatmap <- function(data, title){
     zmat <- (mat - rowMeans(mat))/apply(mat, 1, sd)
     #zmat = mat
     
-    zmat1 <- zmat[, 1:2]
-    zmat2 <- zmat[, 3:4]
-    #med1 <- median(zmat1)
-    #med2 <- median(zmat2)
-    med1 <- rowMeans(zmat1)
-    med2 <- rowMeans(zmat2)
-    zmat1 = zmat1 - med1
-    zmat2 = zmat2 - med2
-    zmat = cbind(zmat1, zmat2)
+#     zmat1 <- zmat[, 1:2]
+#     zmat2 <- zmat[, 3:4]
+#     med1 <- rowMeans(zmat1)
+#     med2 <- rowMeans(zmat2)
+#     zmat1 = zmat1 - med1
+#     zmat2 = zmat2 - med2
+#     zmat = cbind(zmat1, zmat2)
     
     heatmap.2(zmat, 
               col = hmcol,
               Colv = FALSE,
               trace = "none", 
               scale = "none",
-              labRow = data[, grep("gene", colnames(data))],
+              labRow = data[, grep("symbol", colnames(data))],
               margin = c(15, 6),
               keysize = 1.5,
               density.info = "none",
@@ -1006,12 +1009,13 @@ write.csv(actb.df, "actb.normalized.counts.csv", quote = FALSE, row.names = FALS
 
 # Manuscript
 
-Figure/Table | AI | PDF
-----| ----| ----
-Figure 1 | [AI][m0011] | [PDF][m0012]
-Figure S1 | [AI][m0021] | [PDF][m0022]
-Figure S2 | [AI][m0031] | [PDF][m0032]
-Figure S3 | [AI][m0041] | [PDF][m0042]
+Figure/Table April 2, 2015
+
+Figure/Table | PDF
+----| ----
+Figure 4 | [PDF][m0012]
+Figure 5 | [PDF][m0022]
+Figure S1 | [PDF][m0032]
 Table S1 | [xlsx][m0051] | 
 
 
@@ -1035,12 +1039,12 @@ Table S1 | [xlsx][m0051] |
 
 [tf01]:tf-enrichment.html
 
-[m0011]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.1.ai
-[m0012]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.1.pdf
-[m0021]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S1.ai
-[m0022]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S1.pdf
-[m0031]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S2.ai
-[m0032]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S2.pdf
-[m0041]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S3.ai
-[m0042]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Figure.S3.pdf
+
+
+[m0012]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/NiuFig4-20150402.pdf
+
+[m0022]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/NiuFig5-20150402.pdf
+
+[m0032]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/FigureS1.20150402.pdf
+
 [m0051]:http://jordan.biology.gatech.edu/lulu/kazak-manuscript/Table.S1.xlsx
